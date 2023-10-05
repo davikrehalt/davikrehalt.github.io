@@ -31,10 +31,15 @@ body {
 /* Text Styling */
 .profile-container {
     font-family: 'Arial', sans-serif; /* You can choose another font if preferred */
+    border: none;
 }
 
 .profile-container h1, .profile-container h2 {
     margin: 0; /* Removes default margins */
+}
+
+.profile-container h2 {
+    margin-left: 20px;  /* Adjust this value as needed */
 }
 
 .profile-container p {
