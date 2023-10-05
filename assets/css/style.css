@@ -7,25 +7,15 @@ body {
 
 .profile-container {
     display: flex;
-    padding: 20px;
     align-items: flex-start; /* Added to ensure elements align to the top */
 }
 
-.photo {
-    width: 25%; /* This will ensure the photo container takes up 25% of the width */
-    margin-right: 20px; 
-    align-self: center;
-}
-
-/* Image Styling */
 .photo img {
     float: left;  /* Align the image to the left */
     margin-right: 20px; /* Space between image and text */
     border-radius: 5%; /* Optionally add rounded corners */
     box-shadow: 2px 2px 10px rgba(0,0,0,0.1); /* Optional shadow for a polished look */
     max-width: 250px; /* Adjust width as desired */
-    font-family: 'Helvetica', sans-serif; /* You can choose another font if preferred */
-    border: none;
 }
 
 .info-section {
