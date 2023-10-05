@@ -23,5 +23,7 @@ body {
 }
 
 .info, .research-topics, .research-details { 
+    display: flex;
+    align-items: flex-start; /* Added to ensure elements align to the top */
     padding: 20px 0;
 }
