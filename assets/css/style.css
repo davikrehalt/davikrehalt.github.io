@@ -1,4 +1,39 @@
----
----
+body { 
+    font-family: Arial, sans-serif; 
+    margin: 20px; 
+    background-color: #f4f4f4;
+}
 
-@import "{{ site.theme }}";
+.profile-container {
+    display: flex;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    background-color: #fff;
+    padding: 20px;
+}
+
+.photo {
+    flex: 1;
+    margin-right: 20px; 
+}
+
+.photo img { 
+    max-width: 250px;
+    border: none;
+    padding: 0;
+}
+
+.info-section {
+    flex: 3;
+}
+
+.info, .research-topics, .research-details { 
+    padding: 10px 0;
+}
+
+h1, h2 { 
+    color: #333; 
+}
+
+p { 
+    color: #666; 
+}
