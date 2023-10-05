@@ -4,57 +4,31 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Andy Jiang's Website</title>
-    <style>
-        body { 
-            font-family: Arial, sans-serif; 
-            margin: 20px; 
-            display: flex; 
-            flex-wrap: wrap; 
-            background-color: #f4f4f4;
-        }
-        .photo, .content { 
-            padding: 20px; 
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); 
-            margin: 10px; 
-            background-color: #fff;
-        }
-        .photo { 
-            width: 30%; 
-            box-shadow: none;
-        }
-        .content { width: 65%; }
-        img { 
-            max-width: 100%; 
-            border: none; 
-            display: block; 
-            margin: 0 auto;
-        }
-        h1, h2 { color: #333; }
-        p { color: #666; }
-    </style>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
-    <div class="photo">
-        <img src="IMG_0790.jpeg" alt="Andy's Photo">
-    </div>
-
-    <div class="content">
-        <h1>Andy Jiang</h1>
-        <p>About myself: ...</p>
-        <p>Contact: ...</p>
-
-        <h2>Research Topics</h2>
-        <!-- List your research topics here. -->
-        <p>Topic 1</p>
-        <p>Topic 2</p>
-        <!-- ... -->
-
-        <h2>Research Details</h2>
-        <!-- Provide details or description about your research. -->
-        <p>Details about research topic 1...</p>
-        <p>Details about research topic 2...</p>
-        <!-- ... -->
+    <div class="profile-container">
+        <div class="photo">
+            <img src="IMG_0790.jpeg" alt="Andy's Photo">
+        </div>
+        <div class="info-section">
+            <div class="info">
+                <h1>Andy Jiang</h1>
+                <p>About myself: ...</p>
+                <p>Contact: ...</p>
+            </div>
+            <div class="research-topics">
+                <h2>Research Topics</h2>
+                <p>Topic 1</p>
+                <p>Topic 2</p>
+            </div>
+            <div class="research-details">
+                <h2>Research Details</h2>
+                <p>Details about research topic 1...</p>
+                <p>Details about research topic 2...</p>
+            </div>
+        </div>
     </div>
 
 </body>
