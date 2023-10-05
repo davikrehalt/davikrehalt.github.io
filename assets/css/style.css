@@ -10,6 +10,12 @@ body {
     align-items: flex-start; /* Added to ensure elements align to the top */
 }
 
+.profile-container p {
+    margin-top: 0;
+    margin-bottom: 1em; /* Spacing between paragraphs */
+}
+
+
 .photo img {
     float: left;  /* Align the image to the left */
     margin-right: 20px; /* Space between image and text */
@@ -27,3 +33,9 @@ body {
     align-items: flex-start; /* Added to ensure elements align to the top */
     padding: 20px 0;
 }
+
+.research-details p {
+    margin-top: 0;
+    margin-bottom: 1em; /* Spacing between paragraphs */
+}
+
