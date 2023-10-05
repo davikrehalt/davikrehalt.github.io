@@ -7,8 +7,6 @@ body {
 
 .profile-container {
     display: flex;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-    background-color: #fff;
     padding: 20px;
     align-items: flex-start; /* Added to ensure elements align to the top */
 }
