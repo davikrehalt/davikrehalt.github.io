@@ -9,21 +9,25 @@ body {
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
     background-color: #fff;
     padding: 20px;
+    align-items: flex-start; /* Added to ensure elements align to the top */
 }
 
 .photo {
-    flex: 1;
+    width: 25%; /* This will ensure the photo container takes up 25% of the width */
     margin-right: 20px; 
+    align-self: center;
 }
 
 .photo img { 
-    max-width: 250px;
+    width: 100%; /* This will make the image scale responsively to the container size */
     border: none;
     padding: 0;
+    max-width: 250px; /* This limits the image width */
+    max-height: 300px; /* This limits the image height */
 }
 
 .info-section {
-    flex: 3;
+    width: 75%; /* This will ensure the text container takes up 75% of the width */
 }
 
 .info, .research-topics, .research-details { 
