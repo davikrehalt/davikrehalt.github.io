@@ -150,9 +150,6 @@ LATEX_AUX_DIR = WORKING_DIR / "latex_aux"
 FAILED_CHUNKS_DIR = WORKING_DIR / "failed_chunks" # Store failed chunk LaTeX/compile logs
 PROMPT_LOG_FILE = WORKING_DIR / "prompts_and_responses.log"
 
-# LaTeX Tag Constant
-END_DOCUMENT_TAG = "\\end{document}"
-
 # --- System Prompts ---
 # Added a dedicated system prompt for LaTeX tasks
 SYSTEM_PROMPT_LATEX = "You are an expert in LaTeX document generation and translation. Follow instructions precisely, maintain mathematical accuracy, and ensure the output is valid, compilable LaTeX code. Respond ONLY with the requested LaTeX code unless otherwise specified."
@@ -775,7 +772,7 @@ def get_latex_from_chunk_gemini(
         "\\n# Core Requirements:",
         "- **Include Preamble:** Your output MUST start with `\\documentclass` and include a suitable preamble with common packages (inputenc, fontenc, amsmath, amssymb, graphicx, hyperref, etc.) and any theorem environments detected.",
         "- **Include Metadata:** Include `\\title`, `\\author`, `\\date` based on the content, using placeholders if unclear.",
-        "- **Include Body Wrappers:** Include `\\begin{document}`, `\\maketitle` (if applicable) at the start, and ensure the final output includes `{END_DOCUMENT_TAG}` at the very end.", # REVERTED: Put back the request for END_DOCUMENT_TAG
+        "- **Include Body Wrappers:** Include `\\begin{document}`, `\\maketitle` (if applicable) at the start, and ensure the final output includes `\\end{document}` at the very end.", # MODIFIED: Used literal string
         "- **Translate:** All non-English text to English.",
         "- **Math Accuracy:** Preserve all mathematical content accurately.",
         "- **Structure:** Maintain semantic structure.",
@@ -885,7 +882,7 @@ Generate a **complete and compilable English LaTeX document** corresponding *onl
 # Core Requirements:
 - **Include Preamble:** Start with `\\documentclass` and include a suitable preamble (common packages, theorems).
 - **Include Metadata:** Include `\\title`, `\\author`, `\\date` based on content.
-- **Include Body Wrappers:** Include `\\begin{{document}} `, `\\maketitle` (if applicable), and `{{END_DOCUMENT_TAG}}`. # REVERTED: Put back the request for END_DOCUMENT_TAG
+- **Include Body Wrappers:** Include `\\begin{{document}} `, `\\maketitle` (if applicable), and `\\end{{document}}` at the very end. # MODIFIED: Used literal string
 - **Translate:** Non-English text to English.
 - **Math Accuracy:** Preserve math accurately.
 - **Structure:** Maintain semantic structure.
@@ -1015,7 +1012,7 @@ Generate a **complete and compilable English LaTeX document** corresponding *onl
 # Core Requirements:
 - **Include Preamble:** Your output MUST start with `\\documentclass` and include a suitable preamble (common packages, theorems).
 - **Include Metadata:** Include `\\title`, `\\author`, `\\date` based on content.
-- **Include Body Wrappers:** Include `\\begin{{document}}`, `\\maketitle` (if applicable), and `{END_DOCUMENT_TAG}`. # REVERTED: Put back the request for END_DOCUMENT_TAG
+- **Include Body Wrappers:** Include `\\begin{{document}}`, `\\maketitle` (if applicable), and `\\end{{document}}` at the very end. # MODIFIED: Used literal string
 - **Translate:** Non-English text to English.
 - **Math Accuracy:** Preserve math accurately.
 - **Structure:** Maintain semantic structure.
@@ -1927,6 +1924,11 @@ def main(input_pdf_cli=None, requested_provider=None, requested_model_key=None):
         return
     logger.info(f"PDF '{INPUT_PDF_PATH_ACTUAL.name}' has {total_pages} pages.")
 
+    # Define final output paths early
+    final_output_filename_base = f"{INPUT_PDF_PATH_ACTUAL.stem}_translated"
+    FINAL_TEX_FILE = WORKING_DIR / f"{final_output_filename_base}.tex"
+    FINAL_PDF_FILE = WORKING_DIR / f"{final_output_filename_base}.pdf"
+
     # --- Provider-Specific Page Limit Check ---
     page_limit = None # Currently only used for informative error message
     if TARGET_PROVIDER == "gemini": page_limit = 150 # Rough estimate, check docs
@@ -2175,14 +2177,6 @@ def main(input_pdf_cli=None, requested_provider=None, requested_model_key=None):
                     else: 
                         chunk_full_latex = chunk_full_latex.strip()
                     
-                    # Ensure it starts and ends correctly (basic check)
-                    if not chunk_full_latex.startswith("\\documentclass"):
-                         logger.warning(f"Chunk {chunk_num} output missing \\documentclass. Prepending fallback.")
-                         # Try prepending a basic documentclass - might still fail
-                         chunk_full_latex = fallback_preamble.splitlines()[0] + "\n" + chunk_full_latex 
-                    if not chunk_full_latex.strip().endswith(END_DOCUMENT_TAG):
-                         logger.warning(f"Chunk {chunk_num} output missing \\\\end{{document}}. Appending it.")
-                         chunk_full_latex += f"\n\n{END_DOCUMENT_TAG}"
                 else: 
                     # Should not happen if API success is True, but safety check
                     raise TypeError("API reported success but output was not a string.")
@@ -2214,26 +2208,35 @@ def main(input_pdf_cli=None, requested_provider=None, requested_model_key=None):
                     compiled_tex_content = chunk_tex_path.read_text(encoding='utf-8')
                     # Corrected regex strings (removed trailing backslash, fixed escaping)
                     preamble_match = re.match(r"(.*?)(?:\\begin\{document\})", compiled_tex_content, re.DOTALL | re.IGNORECASE)
-                    body_match = re.search(r"\\begin\{document\}(.*?)(?:\\end\{document\})?", compiled_tex_content, re.DOTALL | re.IGNORECASE)
+                    # SIMPLER Regex for body (make \end{document} non-optional):
+                    body_match = re.search(r"\\begin\{document\}(.*?)\\end\{document\}", compiled_tex_content, re.DOTALL | re.IGNORECASE)
                     
-                    if preamble_match and body_match:
-                        extracted_preamble = preamble_match.group(1).strip()
-                        extracted_body = body_match.group(1).strip()
-                        # Basic check if preamble/body look reasonable
-                        if extracted_preamble and extracted_body: 
-                            logger.debug(f"Extracted preamble ({len(extracted_preamble)} chars) and body ({len(extracted_body)} chars).")
-                            chunk_compile_success = True
-                            break # Success! Exit retry loop for this chunk
-                        else:
-                             logger.error("Parsed empty preamble or body from successfully compiled chunk. Treating as failure.")
-                             compile_log += "\nError: Parsed empty preamble/body after successful compile."
-                             chunk_compile_success = False # Ensure marked as failed
+                    extracted_preamble = preamble_match.group(1).strip() if preamble_match else None
+                    # Keep the strip() here for this simpler regex
+                    extracted_body = body_match.group(1).strip() if body_match else None
+
+                    # More detailed check
+                    if extracted_preamble and extracted_body: 
+                        logger.debug(f"Extracted preamble ({len(extracted_preamble)} chars) and body ({len(extracted_body)} chars).")
+                        chunk_compile_success = True
+                        break # Success! Exit retry loop for this chunk
                     else:
-                         logger.error("Could not parse preamble/body from successfully compiled chunk using regex. Treating as failure.")
-                         compile_log += "\nError: Failed to parse preamble/body regex after successful compile."
-                         chunk_compile_success = False # Ensure marked as failed
-                         
+                        error_details = []
+                        if not preamble_match:
+                            error_details.append("Preamble regex did not match.")
+                        elif not extracted_preamble:
+                            error_details.append("Preamble extracted but was empty after stripping.")
+                        
+                        if not body_match:
+                            error_details.append("Body extracted but was empty after stripping." if body_match else "Body regex did not match.") 
+                            
+                        log_msg = f"Parsed empty or missing preamble/body from successfully compiled chunk {chunk_num}. Details: {'. '.join(error_details)}"
+                        logger.error(log_msg)
+                        compile_log += "\nError: " + log_msg
+                        chunk_compile_success = False # Ensure marked as failed
+                        # DO NOT BREAK HERE - let it fall through to save the problematic file if parsing fails
                 except Exception as parse_e: 
+                     log_msg = f"Exception during preamble/body parsing: {parse_e}"
                      logger.error(f"Error parsing preamble/body: {parse_e}. Treating as failure.", exc_info=True)
                      compile_log += f"\nError: Exception during preamble/body parsing: {parse_e}"
                      chunk_compile_success = False # Ensure failure on exception
@@ -2244,8 +2247,8 @@ def main(input_pdf_cli=None, requested_provider=None, requested_model_key=None):
                     
             else: # Compile failed
                 logger.warning(f"Individual compilation failed for chunk {chunk_num} (Attempt {attempt}).")
-                # Save data for this failed attempt
-                save_failed_chunk_data(chunk_num, start_page, end_page, chunk_full_latex, compile_log) # Pass current latex/log
+                # Save data for this failed attempt (API output + compile log)
+                save_failed_chunk_data(chunk_num, start_page, end_page, chunk_full_latex, compile_log)
                 if attempt < MAX_CHUNK_RETRIES:
                      logger.info("Retrying chunk API call after compile failure...")
                      time.sleep(random.uniform(3, 7) * attempt) # Exponential backoff before API retry
@@ -2254,6 +2257,18 @@ def main(input_pdf_cli=None, requested_provider=None, requested_model_key=None):
                      logger.error(f"Chunk {chunk_num} failed compilation after all retries.")
                      chunk_compile_success = False # Ensure marked as failed
                      break # Exit retry loop, chunk failed all attempts
+
+            # Added check: If compile was OK but parsing failed, save the problematic .tex file
+            if compile_ok and not chunk_compile_success:
+                logger.warning(f"Chunk {chunk_num} compiled but parsing failed. Saving the problematic .tex file.")
+                failed_tex_copy_path = FAILED_CHUNKS_DIR / f"compiled_but_parsed_fail_chunk_{chunk_num}_p{start_page}-p{end_page}.tex"
+                try:
+                    shutil.copy2(chunk_tex_path, failed_tex_copy_path)
+                    logger.info(f"Saved problematic tex file to {failed_tex_copy_path}")
+                except Exception as copy_e:
+                    logger.error(f"Could not copy problematic tex file {chunk_tex_path} to {failed_tex_copy_path}: {copy_e}")
+                # Now break the retry loop as parsing failed
+                break
             
         # --- End Retry Loop --- 
         
@@ -2375,9 +2390,7 @@ def main(input_pdf_cli=None, requested_provider=None, requested_model_key=None):
         )
         
         # Define final output paths
-        final_output_filename_base = f"{INPUT_PDF_PATH_ACTUAL.stem}_translated"
-        FINAL_TEX_FILE = WORKING_DIR / f"{final_output_filename_base}.tex"
-        FINAL_PDF_FILE = WORKING_DIR / f"{final_output_filename_base}.pdf" # Path expected by compile_latex
+        # MOVED EARLIER
 
         try:
             FINAL_TEX_FILE.write_text(final_combined_latex, encoding='utf-8')
