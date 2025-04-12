@@ -1,4 +1,6 @@
 
+Okay, I've revised the `README.html` content to remove the term "tournament" and replace it with alternatives like "multi-model processing", "model sequence", or "multi-model approach".
+
 ```html
 <!DOCTYPE html>
 <html lang="en">
@@ -28,7 +30,7 @@
 
 <h1>How to Translate a Math PDF (Co-written with Gemini)</h1>
 
-<p>Modern multimodal AI models can take a math paper in a non-English language (provided as a PDF) and output a translation directly in LaTeX. This guide explains how to use a Python script that leverages multiple AI providers (Anthropic Claude, OpenAI GPT, Google Gemini) in a tournament format to achieve this.</p>
+<p>Modern multimodal AI models can take a math paper in a non-English language (provided as a PDF) and output a translation directly in LaTeX. This guide explains how to use a Python script that leverages multiple AI providers (Anthropic Claude, OpenAI GPT, Google Gemini) sequentially to achieve this.</p>
 
 <p><span class="warning">Disclaimer:</span> AI translations, especially for complex technical documents, carry risks of hallucination or error. This guide and the accompanying script were developed collaboratively with AI and reflect capabilities as of early 2025; they may require updates as APIs and models evolve. Always carefully review the generated LaTeX output.</p>
 
@@ -55,17 +57,17 @@
 
 <h2>Situation 2: Translation for Longer Papers via the Multi-API Script</h2>
 
-<p>For longer papers, the provided Python script (`translator.py`) automates a page-by-page translation process using a tournament of different AI models.</p>
+<p>For longer papers, the provided Python script (`translator.py`) automates a page-by-page translation process using a sequence of different AI models.</p>
 
 <p>The script workflow:</p>
 <ol>
     <li>Reads processing state (if resuming).</li>
     <li>Iterates through PDF pages, converting each to an image.</li>
-    <li>For each page image, it runs a "tournament":
+    <li>For each page image, it attempts translation using multiple models:
         <ul>
-            <li>Sends the image and contextual information (like previous page content) to models from different providers (Claude, GPT, Gemini) based on a defined queue order.</li>
-            <li>Uses the LaTeX output from the first model that successfully responds.</li>
-            <li>Includes retries and cycles through the model queue if initial attempts fail.</li>
+            <li>Sends the image and contextual information (like previous page content) to models from different providers (Claude, GPT, Gemini) based on a defined sequence (queue order).</li>
+            <li>Uses the LaTeX output from the first model in the sequence that successfully responds.</li>
+            <li>Includes retries and cycles through the model sequence if initial attempts fail.</li>
         </ul>
     </li>
     <li>If all models fail for a page, it inserts a placeholder into the LaTeX document and saves the original page image for manual review.</li>
@@ -105,7 +107,7 @@ To use this script, you need API keys for the AI providers you wish to use and a
 
     <h4>2. Configuration (Optional):</h4>
     <ul>
-        <li><strong>Model Queue/Configs:</strong> Edit the `get_model_configs()` function and `DEFAULT_MODEL_QUEUE` list within `translator.py` to add/remove models or change their priority.</li>
+        <li><strong>Model Sequence/Configs:</strong> Edit the `get_model_configs()` function and `DEFAULT_MODEL_QUEUE` list within `translator.py` to add/remove models or change their priority in the processing sequence.</li>
         <li><strong>Working Directory:</strong> By default, outputs go to `latex_processing_multi`. Use the `--working-dir` flag to change this.</li>
     </ul>
 
@@ -134,9 +136,9 @@ python translator.py paper_v2.pdf --working-dir /path/to/my/latex_output</code><
     <h4>4. Command-Line Options (Flags):</h4>
     <ul>
         <li><code>input_pdf</code> (Positional, Optional): Path to the input PDF (defaults to `input.pdf`).</li>
-        <li><code>--model MODEL_KEY</code> or <code>-m MODEL_KEY</code>: Specify a preferred model key (e.g., `claude-3-opus`, `gpt-4o`) to try first in the tournament queue. Use <code>--list-models</code> to see available keys.</li>
+        <li><code>--model MODEL_KEY</code> or <code>-m MODEL_KEY</code>: Specify a preferred model key (e.g., `claude-3-opus`, `gpt-4o`) to try first in the processing sequence. Use <code>--list-models</code> to see available keys.</li>
         <li><code>--working-dir PATH</code> or <code>-w PATH</code>: Set the directory for all outputs (logs, state, .tex, .pdf, failed pages). Defaults to `./latex_processing_multi`.</li>
-        <li><code>--list-models</code> or <code>-l</code>: Display available model keys configured in the script and the default queue order, then exit.</li>
+        <li><code>--list-models</code> or <code>-l</code>: Display available model keys configured in the script and the default processing sequence order, then exit.</li>
     </ul>
 
     <h4>5. Output Files (in Working Directory):</h4>
@@ -167,8 +169,8 @@ python translator.py paper_v2.pdf --working-dir /path/to/my/latex_output</code><
 
     <h3>Key Features of the Multi-Model Script</h3>
     <ul>
-        <li><strong>Multi-Provider Tournament:</strong> Leverages Claude, GPT, and Gemini models for robustness and potentially better results.</li>
-        <li><strong>Configurable Model Queue:</strong> Allows prioritizing preferred models.</li>
+        <li><strong>Multi-Provider Processing:</strong> Leverages Claude, GPT, and Gemini models sequentially for robustness and potentially better results.</li>
+        <li><strong>Configurable Model Sequence:</strong> Allows prioritizing preferred models in the processing order.</li>
         <li><strong>Page-by-Page Processing:</strong> Handles long documents by processing one page at a time.</li>
         <li><strong>Image-Based Translation:</strong> Converts PDF pages to images for multimodal AI input.</li>
         <li><strong>Contextual Prompting:</strong> Provides models with context from the previous page's LaTeX output to improve consistency.</li>
