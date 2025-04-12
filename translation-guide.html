@@ -1,145 +1,183 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>How to Translate a Math PDF (Co-written with Gemini 2.5 Pro)</title>
+    <title>How to Translate a Math PDF (Co-written with AI)</title>
     <style>
         /* Basic styling for readability */
-        body { font-family: sans-serif; line-height: 1.6; margin: 2em; }
-        h1, h2, h3, h4 { margin-top: 1.5em; }
-        pre { background-color: #f4f4f4; padding: 1em; border: 1px solid #ddd; overflow-x: auto; white-space: pre-wrap; /* Wrap long lines */ word-wrap: break-word; /* Break words if needed */ }
-        code { font-family: monospace; }
+        body { font-family: sans-serif; line-height: 1.6; margin: 2em; max-width: 900px; margin-left: auto; margin-right: auto; }
+        h1, h2, h3, h4 { margin-top: 1.5em; color: #333; }
+        h1 { border-bottom: 2px solid #eee; padding-bottom: 0.3em;}
+        pre { background-color: #f8f8f8; padding: 1em; border: 1px solid #ddd; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; font-size: 0.9em; border-radius: 4px; }
+        code { font-family: monospace; background-color: #f0f0f0; padding: 0.2em 0.4em; border-radius: 3px;}
         ul, ol { margin-left: 1.5em; }
         li { margin-bottom: 0.5em; }
-        /* Style to visually separate Gemini's explanation */
-        .gemini-explanation { border-left: 4px solid #4285F4; /* Google blue */ padding-left: 1em; margin-top: 1.5em; margin-bottom: 1.5em;}
+        a { color: #007bff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        /* Style to visually separate AI's explanation */
+        .ai-explanation { border-left: 4px solid #4285F4; /* Google blue */ padding-left: 1em; margin-top: 1.5em; margin-bottom: 1.5em; background-color: #f9f9f9; border-radius: 4px; padding: 1em; }
+        .requirements ul li strong { display: inline-block; min-width: 150px; } /* Align requirement titles */
+        .warning { color: #dc3545; font-weight: bold; }
+        .note { font-style: italic; color: #555; }
     </style>
 </head>
 <body>
 
-<h1>How to Translate a Math PDF (Co-written with Gemini 2.5 Pro)</h1>
+<h1>How to Translate a Math PDF (Multi-AI Approach)</h1>
 
-<p>Nowadays, multimodal AI models can take as input a math paper in a non-English language and output a translation directly in LaTeX. Below is a guide on this. Before proceeding, beware that there are always risks of hallucination or error from the AI and from the fact that this guide was written in April 2025 and was suboptimal even when written.</p>
+<p>Modern multimodal AI models can take a math paper in a non-English language (provided as a PDF) and output a translation directly in LaTeX. This guide explains how to use a Python script that leverages multiple AI providers (Anthropic Claude, OpenAI GPT, Google Gemini) in a tournament format to achieve this.</p>
 
-<p>A quick note: for this to work, the core capability for this task has to exist in the multimodal AI itself. The guide below merely provides scaffolding to overcome the following two common challenges:</p>
+<p><span class="warning">Disclaimer:</span> AI translations, especially for complex technical documents, carry risks of hallucination or error. This guide and the accompanying script were developed collaboratively with AI and reflect capabilities as of early 2025; they may require updates as APIs and models evolve. Always carefully review the generated LaTeX output.</p>
+
+<p>The core translation ability resides within the AI models themselves. This script provides scaffolding to overcome common challenges:</p>
 <ul>
-    <li><strong>Output Length Limits:</strong> AIs often can't generate the entire LaTeX for a long paper in one output, especially via API calls.</li>
-    <li><strong>AI Confusion from Input Size:</strong> Processing hundreds of pages of math can sometimes lead to a degradation in translation ability or increased errors.</li>
+    <li><strong>Output Length Limits:</strong> AIs often struggle to generate LaTeX for very long papers in a single API call.</li>
+    <li><strong>API Reliability/Failures:</strong> Individual API calls can fail. Using multiple models increases robustness.</li>
+    <li><strong>Consistency:</strong> Maintaining consistent LaTeX formatting and translation style across many pages can be difficult for AIs.</li>
+    <li><strong>Compilation Errors:</strong> AI-generated LaTeX might contain errors that prevent compilation.</li>
 </ul>
 
 <p>We divide this guide into two main situations.</p>
 
 <h2>Situation 1 (Easiest): Translating Short Papers (e.g., < 20 pages)</h2>
 
-<p>If the paper is short, you can often translate it directly using a chat interface for any capable multimodal AI model (like Google's AI Studio for Gemini).</p>
+<p>For short papers, direct translation via a chat interface of a capable multimodal AI (like Google AI Studio, Anthropic's Console, or OpenAI's ChatGPT with vision) is often sufficient.</p>
 <ol>
     <li><strong>Method:</strong> Upload the PDF directly into the chat interface.</li>
-    <li><strong>Prompt:</strong> Use a prompt like this:
-        <pre><code>Please translate the uploaded document into English LaTeX code. Ensure all mathematical formulas and environments are preserved correctly. Generate the complete LaTeX document, including a suitable preamble.</code></pre>
+    <li><strong>Prompt:</strong> Use a detailed prompt like:
+        <pre><code>Please translate the uploaded non-English math document into English LaTeX code. Preserve all mathematical formulas, equations, and environments accurately using standard LaTeX (amsmath, amssymb, etc.). Generate a complete LaTeX document, including a suitable preamble (documentclass, common packages like graphicx, amsthm, hyperref), metadata (title, author if visible), and the translated content.</code></pre>
     </li>
-    <li><strong>Process:</strong> Copy the AI's generated LaTeX output, paste it into your LaTeX editor (e.g., Overleaf), compile, and carefully review the resulting PDF.</li>
+    <li><strong>Process:</strong> Copy the AI's generated LaTeX, paste it into a LaTeX editor (e.g., Overleaf, VS Code with LaTeX Workshop), compile, and meticulously review the resulting PDF for correctness and formatting.</li>
 </ol>
 
-<h2>Situation 2: Translation for Longer Papers via an API</h2>
+<h2>Situation 2: Translation for Longer Papers via the Multi-API Script</h2>
 
-<p>For longer papers, we must divide the paper into manageable chunks for translation. Using an API, it is possible to write code to automate this process. The philosophy here is that the scaffolding imposed on the AI model should be minimal, so as not to interfere with the AI's own ability to process and translate effectively.</p>
+<p>For longer papers, the provided Python script (`test.py`) automates a page-by-page translation process using a tournament of different AI models.</p>
 
-<p>The basic script workflow involves these steps:</p>
+<p>The script workflow:</p>
 <ol>
-    <li>Determine how to split the PDF into chunks (e.g., based on logical sections suggested by the AI, or simply using fixed page counts).</li>
-    <li>Call the Gemini (or other AI) API for each chunk, sending the relevant pages (potentially as images or extracted text, depending on the chosen API capabilities and complexity) for translation into LaTeX format.</li>
-    <li>Combine the resulting LaTeX pieces generated for each chunk into a single, final <code>.tex</code> file.</li>
+    <li>Reads processing state (if resuming).</li>
+    <li>Iterates through PDF pages, converting each to an image.</li>
+    <li>For each page image, it runs a "tournament":
+        <ul>
+            <li>Sends the image and contextual information (like previous page content) to models from different providers (Claude, GPT, Gemini) based on a defined queue order.</li>
+            <li>Uses the LaTeX output from the first model that successfully responds.</li>
+            <li>Includes retries and cycles through the model queue if initial attempts fail.</li>
+        </ul>
+    </li>
+    <li>If all models fail for a page, it inserts a placeholder into the LaTeX document and saves the original page image for manual review.</li>
+    <li>Appends the successful LaTeX (or placeholder) for the current page to the cumulative document.</li>
+    <li>Attempts to compile the cumulative LaTeX document using `pdflatex` after each page.</li>
+    <li>If compilation succeeds, saves the state and the `.tex`/`.pdf` files.</li>
+    <li>If compilation fails (even with a placeholder), it indicates a critical error and stops processing.</li>
+    <li>At the end, generates a report summarizing model performance and optionally merges it with the main PDF.</li>
 </ol>
 
-<!-- User's corrected paragraph -->
-<p>We provide an <a href="test.py" download>example script</a> written with Gemini.
-<!-- Make sure test.py is in the same directory as this HTML file, or adjust the href path -->
-In order to use this script, you first need to obtain a Gemini API key and set up a Python environment with the necessary libraries installed. </p>
+<p>We provide the <a href="test.py" download>example Python script (test.py)</a>.
+<!-- Make sure test.py is in the same directory -->
+To use this script, you need API keys for the AI providers you wish to use and a correctly configured Python environment.</p>
 
-<p>I'll let Gemini explain in more detail:</p>
-    <div class="gemini-explanation"> <!-- Start of Gemini's Explanation -->
-    <h3>How to Use the Python Script</h3>
-    <p>(Assuming you have downloaded the script we developed, <code>test.py</code>)</p>
+<p>Here's a more detailed explanation:</p>
+
+<div class="ai-explanation"> <!-- Start of AI Explanation -->
+    <h3>How to Use the Multi-Model Python Script (test.py)</h3>
 
     <h4>1. Requirements:</h4>
-    <ul>
-        <li><strong>Python Environment:</strong> A working Python installation (version 3.x recommended). Using a virtual environment (like `venv`) is highly recommended.</li>
-        <li>
-            <strong>Required Python Packages:</strong> Install these using pip (or pip3):
-            <pre><code>pip install google-generativeai pdf2image Pillow pypdf python-dotenv</code></pre>
+    <ul class="requirements">
+        <li><strong>Python:</strong> Version 3.x recommended. Use a virtual environment (`venv`).</li>
+        <li><strong>Python Packages:</strong> Install via pip:
+            <pre><code>pip install google-generativeai anthropic openai pdf2image Pillow pypdf</code></pre>
         </li>
-        <li>
-            <strong>External Dependency: Poppler:</strong> The `pdf2image` library requires the Poppler PDF rendering library. You must install it separately. <em>Failure to install Poppler correctly is a common reason for errors.</em>
+        <li><strong>Poppler:</strong> Required by `pdf2image`. Install system-wide (e.g., `brew install poppler`, `sudo apt-get install poppler-utils`). Ensure it's in your PATH. <span class="warning">Installation issues are common!</span></li>
+        <li><strong>LaTeX Distribution:</strong> A working installation (TeX Live, MiKTeX) is **required**. The `pdflatex` command must be runnable from your terminal.</li>
+        <li><strong>API Keys:</strong> You need API keys for the providers you intend to use. Set them as environment variables:
+            <ul>
+                <li><code>ANTHROPIC_API_KEY</code> (for Claude models)</li>
+                <li><code>OPENAI_API_KEY</code> (for GPT models)</li>
+                <li><code>GOOGLE_API_KEY</code> (for Gemini models)</li>
+            </ul>
+             Get keys from their respective websites (Anthropic Console, OpenAI Platform, Google AI Studio). The script will skip models from providers whose keys are not found.
         </li>
-        <li>
-            <strong>External Dependency: LaTeX Distribution:</strong> This version of the script **requires a working LaTeX installation** (like TeX Live, MiKTeX) on your system. The command <code>pdflatex</code> must be runnable from your terminal (i.e., in your system's PATH).
-        </li>
-        <li><strong>Gemini API Key:</strong> Obtain an API key from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer">Google AI Studio</a> and save it securely (e.g., in a <code>.env</code> file or as an environment variable).</li>
     </ul>
 
-    <h4>2. Run the Script:</h4>
-    <p>
-        To run the script, open your terminal or command prompt. The basic command structure is:
-    </p>
-    <pre><code>python test.py [input_pdf_path] [output_tex_path] [options...]</code></pre>
-    <p>
-        Crucially, the script **requires two positional arguments** that must come first and in this specific order:
-    </p>
-        <ol>
-             <li><strong>Input PDF Path:</strong> The full path to the PDF file you want to translate.</li>
-             <li><strong>Output TeX Path:</strong> The full path where the script should save the generated LaTeX (<code>.tex</code>) file.</li>
-        </ol>
-    <p>
-        Optional arguments (like <code>--model</code> or <code>--start_page</code>) must come <em>after</em> these first two required paths.
-    </p>
-    <p><strong>Example Command:</strong></p>
-    <!-- Corrected Example Command -->
-    <pre><code>python test.py raynaud_gruson.pdf test.tex --model gemini-2.5-pro-exp-03-25 --start_page 1</code></pre>
+    <h4>2. Configuration (Optional):</h4>
     <ul>
-        <li>In this example:
+        <li><strong>Model Queue/Configs:</strong> Edit the `get_model_configs()` function and `DEFAULT_MODEL_QUEUE` list within `test.py` to add/remove models or change their priority.</li>
+        <li><strong>Working Directory:</strong> By default, outputs go to `latex_processing_multi`. Use the `--working-dir` flag to change this.</li>
+    </ul>
+
+
+    <h4>3. Running the Script:</h4>
+    <p>Open your terminal/command prompt in the directory containing `test.py`.</p>
+    <p><strong>Basic Command:</strong></p>
+    <pre><code>python test.py [path/to/your/input.pdf] [options...]</code></pre>
+    <ul>
+        <li>The <strong>Input PDF Path</strong> is the first (optional) argument. If omitted, it defaults to `input.pdf` in the script's directory.</li>
+        <li>All other options use flags (e.g., <code>--model</code>, <code>--working-dir</code>).</li>
+    </ul>
+
+    <p><strong>Example Commands:</strong></p>
+    <pre><code class="language-bash"># Translate my_paper.pdf using default settings
+python test.py my_paper.pdf
+
+# Translate input.pdf, preferring claude-3.7-sonnet first
+python test.py --model claude-3.7-sonnet
+
+# Translate paper_v2.pdf and store outputs in a custom directory
+python test.py paper_v2.pdf --working-dir /path/to/my/latex_output</code></pre>
+
+    <p class="note"><em>Use quotes around paths with spaces. You might need <code>python3</code> instead of <code>python</code>.</em></p>
+
+    <h4>4. Command-Line Options (Flags):</h4>
+    <ul>
+        <li><code>input_pdf</code> (Positional, Optional): Path to the input PDF (defaults to `input.pdf`).</li>
+        <li><code>--model MODEL_KEY</code> or <code>-m MODEL_KEY</code>: Specify a preferred model key (e.g., `claude-3-opus`, `gpt-4o`) to try first in the tournament queue. Use <code>--list-models</code> to see available keys.</li>
+        <li><code>--working-dir PATH</code> or <code>-w PATH</code>: Set the directory for all outputs (logs, state, .tex, .pdf, failed pages). Defaults to `./latex_processing_multi`.</li>
+        <li><code>--list-models</code> or <code>-l</code>: Display available model keys configured in the script and the default queue order, then exit.</li>
+    </ul>
+
+    <h4>5. Output Files (in Working Directory):</h4>
+    <ul>
+        <li><code>cumulative_good.tex</code>: The latest successfully compiled LaTeX source.</li>
+        <li><code>cumulative_good.pdf</code>: The PDF generated from `cumulative_good.tex`.</li>
+        <li><code>processing.log</code>: Detailed log of the translation process.</li>
+        <li><code>state.json</code>: Stores the last completed page for resuming.</li>
+        <li><code>model_stats.json</code>: Tracks which models successfully translated which pages and records failures.</li>
+        <li><code>latex_aux/</code>: Directory containing auxiliary files from LaTeX compilation (`.log`, `.aux`, etc.).</li>
+        <li><code>failed_pages/</code>: Contains images (`.jpg`) of pages that failed all translation attempts.</li>
+        <li><code>*.log</code> (e.g., `compile_fail_*.log`, `report_compile.log`): Specific logs for compilation failures.</li>
+        <li><code>*final.pdf</code> / <code>*final_with_report.pdf</code>: The final output PDF, potentially merged with reports/appendices.</li>
+    </ul>
+
+    <h4>6. Resuming and Error Handling:</h4>
+    <ul>
+        <li><strong>Resuming:</strong> Simply run the script again with the same input PDF and working directory. It will read `state.json` and continue from the last successfully completed page.</li>
+        <li><strong>Failures:</strong>
             <ul>
-              <li><code>test.py</code> is the script name.</li>
-              <li><code>raynaud_gruson.pdf</code> is the <strong>required input PDF path</strong>.</li>
-              <li><code>test.tex</code> is the <strong>required output TeX path</strong>.</li>
-              <!-- Corrected formatting for the optional args description -->
-              <li><code>--model gemini-2.5-pro-exp-03-25</code> and <code>--start_page 1</code> are optional arguments placed after the required paths.</li>
+                <li>If a page fails all model translation attempts, its image is saved in `failed_pages/`, a placeholder is inserted in the LaTeX, and processing continues.</li>
+                <li>If the generated LaTeX (even with placeholders) fails to compile, it usually indicates a deeper issue in the document structure. Processing stops, and logs (`compile_fail*.log`) should be checked.</li>
+                <li>Fix errors in `cumulative_good.tex` manually, then rerun the script to resume from the corrected state.</li>
             </ul>
         </li>
-        <li>Use quotes around paths if they contain spaces.</li>
-        <li><em>Note: You might need to use <code>python3</code> instead of <code>python</code> depending on your system.</em></li>
     </ul>
 
-    <h4>3. Optional Arguments (Flags):</h4>
-    <p>Add these flags *after* the required input PDF and output TeX paths to customize behavior:</p>
-    <ul>
-        <li><code>--env path/to/.env</code>: Specify a different path for your <code>.env</code> file.</li>
-        <li>
-            <!-- Updated model description based on test.py -->
-            <code>--model model_name</code>: Specify a Gemini vision model. The script defaults to <code>gemini-1.5-pro-latest</code>. Other options like <code>gemini-1.5-flash-latest</code> or experimental models like <code>gemini-2.5-pro-exp-03-25</code> (used in the example) might be available. Always check Google's documentation for current model names and capabilities.
-        </li>
-        <li><code>--start_page N</code>: Start processing from page N (1-based). Useful for resuming. Defaults to 1.</li>
-        <li><code>--chunk_size N</code>: Pages to process before attempting LaTeX compilation (default: 7).</li>
-         <li><code>--body_context_len N</code>: Max characters of previous BODY context to send to API (default: 10000). Set to 0 to disable body context.</li> <!-- Corrected argument name and default -->
-    </ul>
 
-    <h3>Explanation and Key Features of the Script</h3>
-    <p>(This section outlines the script's internal logic. Refer to the script's comments for full details.)</p>
+    <h3>Key Features of the Multi-Model Script</h3>
     <ul>
-        <li><strong>API Key Loading:</strong> Securely loads the Gemini API key.</li>
-        <li><strong>PDF Page Handling:</strong> Uses <code>pypdf</code> for page count and <code>pdf2image</code> (requires Poppler) for page-to-image conversion.</li>
-        <li><strong>Page-by-Page Image Translation:</strong> Iterates through pages, sending each image to the specified Gemini vision model (defaulting to <code>gemini-1.5-pro-latest</code>) for LaTeX generation.</li>
-        <li><strong>Enhanced Contextual Prompts:</strong> Includes the preamble and recent body LaTeX content (length controlled by <code>--body_context_len</code>) as reference context to improve consistency.</li>
-        <li><strong>Chunk-Based Compilation Check:</strong> After processing a chunk (size controlled by <code>--chunk_size</code>), writes the accumulated LaTeX and attempts compilation using <code>pdflatex</code> (requires LaTeX installed), saving the log.</li>
-        <li><strong>AI-Assisted Preamble Fixing:</strong> If initial compilation fails, attempts to ask the AI to suggest preamble updates based on the error log and recompile.</li>
-        <li><strong>Error Handling & Halting on Failure:</strong> Handles API, file, image conversion, and compilation errors. **Stops execution** if a LaTeX compilation fails after the AI fix attempt (or if no fix is suggested), saving the faulty <code>.tex</code> file/log, guiding the user to fix errors and restart using <code>--start_page</code>.</li>
-        <li><strong>Combining Output:</strong> Successfully compiled chunks are progressively added to the main output file.</li>
-        <li><strong>Resume Capability:</strong> Uses <code>--start_page</code> and loads existing preamble/body context from the output file if resuming.</li>
-        <li><strong>Command-Line Interface:</strong> Uses <code>argparse</code> for required positional arguments (PDF input, TeX output) and optional flags.</li>
-        <li><strong>Logging:</strong> Provides progress updates and error messages.</li>
+        <li><strong>Multi-Provider Tournament:</strong> Leverages Claude, GPT, and Gemini models for robustness and potentially better results.</li>
+        <li><strong>Configurable Model Queue:</strong> Allows prioritizing preferred models.</li>
+        <li><strong>Page-by-Page Processing:</strong> Handles long documents by processing one page at a time.</li>
+        <li><strong>Image-Based Translation:</strong> Converts PDF pages to images for multimodal AI input.</li>
+        <li><strong>Contextual Prompting:</strong> Provides models with context from the previous page's LaTeX output to improve consistency.</li>
+        <li><strong>Compilation Checks:</strong> Attempts `pdflatex` compilation after each page to catch errors early.</li>
+        <li><strong>Graceful Failure Handling:</strong> Inserts placeholders for pages that fail translation or cause compilation errors, allowing processing to continue where possible. Saves images of failed pages.</li>
+        <li><strong>State Management:</strong> Automatically saves and resumes progress using `state.json`.</li>
+        <li><strong>Performance Reporting:</strong> Generates statistics (`model_stats.json`) and a final PDF report summarizing which models were used and which pages failed.</li>
+        <li><strong>Command-Line Interface:</strong> Flexible control via CLI arguments.</li>
+        <li><strong>Detailed Logging:</strong> Records progress and errors to `processing.log`.</li>
     </ul>
-</div> <!-- End of gemini-explanation div -->
+</div> <!-- End of ai-explanation div -->
+
 </body>
 </html>
-```
