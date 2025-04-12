@@ -29,7 +29,7 @@
 
 <p>Modern multimodal AI models can take a math paper in a non-English language (provided as a PDF) and output a translation directly in LaTeX. This guide explains how to use a Python script that leverages multiple AI providers (Anthropic Claude, OpenAI GPT, Google Gemini) sequentially to achieve this.</p>
 
-<p><span class="warning">Disclaimer:</span> AI translations, especially for complex technical documents, carry risks of hallucination or error. This guide and the accompanying script were developed collaboratively with AI and reflect capabilities as of early 2025; they may require updates as APIs and models evolve. Always carefully review the generated LaTeX output.</p>
+<p><span class="warning">Disclaimer:</span> AI translations, especially for complex technical documents, carry risks of hallucination or error. This guide and the accompanying script were developed collaboratively with AI and reflect capabilities as of early 2025; they may require updates as APIs and models evolve. Always carefully review the generated LaTeX output. <span class="warning">Furthermore, be mindful of copyright restrictions when translating and distributing academic papers. Some AI models may refuse to process copyrighted material; if you encounter content refusals, you might try a different model, but ensure you have the necessary rights to translate and use the material.</span></p>
 
 <p>The core translation ability resides within the AI models themselves. This script provides scaffolding to overcome common challenges:</p>
 <ul>
@@ -60,16 +60,15 @@
 <ol>
     <li>Reads processing state (if resuming).</li>
     <li>Iterates through PDF pages, converting each to an image.</li>
-    <li>For each page image, it attempts translation using multiple models:
+    <li>For each page image, it attempts translation using the selected AI model: <!-- Updated description for single-model logic -->
         <ul>
-            <li>Sends the image and contextual information (like previous page content) to models from different providers (Claude, GPT, Gemini) based on a defined sequence (queue order).</li>
-            <li>Uses the LaTeX output from the first model in the sequence that successfully responds and produces compilable code.</li> <!-- Updated description -->
-            <li>Includes retries and cycles through the model sequence if initial attempts fail (due to API error or compilation error).</li> <!-- Updated description -->
+            <li>Sends the image and contextual information (like previous page content) to the specified model.</li>
+            <li>Includes retries if the initial attempts fail (due to API error or compilation error).</li> <!-- Updated description for single-model logic -->
         </ul>
     </li>
-    <li>If all models fail to produce compilable LaTeX for a page, it inserts a placeholder into the LaTeX document and saves the original page image for manual review.</li>
+    <li>If all retries for the selected model fail to produce compilable LaTeX for a page, it inserts a placeholder into the LaTeX document and saves the original page image for manual review.</li> <!-- Updated description for single-model logic -->
     <li>Appends the successful LaTeX (or placeholder) for the current page to the cumulative document.</li>
-    <li>Saves the state and the last known good `.tex`/`.pdf` files after each successfully processed page.</li> <!-- Updated description -->
+    <li>Saves the state and the last known good `.tex`/`.pdf` files after each successfully processed page.</li>
     <li>If compilation fails even with a placeholder, it indicates a critical error (likely in the preamble or previous content) and stops processing.</li>
     <li>At the end, generates a report summarizing model performance and optionally merges it with the main PDF.</li>
 </ol>
@@ -81,7 +80,7 @@ To use this script, you need API keys for the AI providers you wish to use and a
 <p>Here's a more detailed explanation:</p>
 
 <div class="ai-explanation"> <!-- Start of AI Explanation -->
-    <h3>How to Use the Multi-Model Python Script (translator.py)</h3>
+    <h3>How to Use the Single-Model Python Script (translator.py)</h3> <!-- Updated title -->
 
     <h4>1. Requirements:</h4>
     <ul class="requirements">
@@ -91,50 +90,53 @@ To use this script, you need API keys for the AI providers you wish to use and a
         </li>
         <li><strong>Poppler:</strong> Required by `pdf2image`. Install system-wide (e.g., `brew install poppler`, `sudo apt-get install poppler-utils`). Ensure it's in your PATH. <span class="warning">Installation issues are common!</span></li>
         <li><strong>LaTeX Distribution:</strong> A working installation (TeX Live, MiKTeX) is **required**. The `pdflatex` command must be runnable from your terminal.</li>
-        <li><strong>API Keys:</strong> You need API keys for the providers you intend to use. Set them as environment variables:
+        <li><strong>API Keys:</strong> You need an API key for the provider of the model you intend to use. Set it as an environment variable:
             <ul>
                 <li><code>ANTHROPIC_API_KEY</code> (for Claude models)</li>
                 <li><code>OPENAI_API_KEY</code> (for GPT models)</li>
                 <li><code>GOOGLE_API_KEY</code> (for Gemini models)</li>
             </ul>
-             Get keys from their respective websites (Anthropic Console, OpenAI Platform, Google AI Studio). The script will skip models from providers whose keys are not found.
+             Get keys from their respective websites (Anthropic Console, OpenAI Platform, Google AI Studio). The script will fail if the key for the selected model's provider is not found. <!-- Updated -->
         </li>
     </ul>
 
     <h4>2. Configuration (Optional):</h4>
     <ul>
-        <li><strong>Model Sequence/Configs:</strong> Edit the `get_model_configs()` function and `DEFAULT_MODEL_QUEUE` list within `translator.py` to add/remove models or change their priority in the processing sequence.</li>
+        <li><strong>Model Configs:</strong> Edit the `get_model_configs()` function within `translator.py` to add or update model details. Use `--list-models` to see current options.</li> <!-- Updated -->
+        <li><strong>Default Model:</strong> Change the `DEFAULT_MODEL_KEY` variable in the script if you prefer a different default than `claude-3.5-sonnet`.</li> <!-- Updated -->
         <li><strong>Working Directory:</strong> By default, outputs go to `latex_processing_multi`. Use the `--working-dir` flag to change this.</li>
     </ul>
 
 
     <h4>3. Running the Script:</h4>
     <p>Open your terminal/command prompt in the directory containing `translator.py`.</p>
-    <p><strong>Basic Command:</strong></p>
+    <p><strong>Basic Command (using default model):</strong></p> <!-- Updated -->
     <pre><code>python translator.py [path/to/your/input.pdf] [options...]</code></pre>
+    <p><strong>Command with Specific Model:</strong></p> <!-- Added -->
+    <pre><code>python translator.py [path/to/your/input.pdf] --model MODEL_KEY [options...]</code></pre>
     <ul>
         <li>The <strong>Input PDF Path</strong> is the first (optional) argument. If omitted, it defaults to `input.pdf` in the script's directory.</li>
-        <li>All other options use flags (e.g., <code>--model</code>, <code>--working-dir</code>).</li>
+        <li>The <code>--model</code> flag is recommended to specify the AI model you want to use.</li> <!-- Updated -->
     </ul>
 
     <p><strong>Example Commands:</strong></p>
-    <pre><code class="language-bash"># Translate my_paper.pdf using default settings
+    <pre><code class="language-bash"># Translate my_paper.pdf using the default model (claude-3.5-sonnet)
 python translator.py my_paper.pdf
 
-# Translate input.pdf, preferring claude-3.7-sonnet first
-python translator.py --model claude-3.7-sonnet
+# Translate input.pdf using gpt-4o
+python translator.py --model gpt-4o
 
-# Translate paper_v2.pdf and store outputs in a custom directory
-python translator.py paper_v2.pdf --working-dir /path/to/my/latex_output</code></pre>
+# Translate paper_v2.pdf using gemini-1.5-pro and store outputs in a custom directory
+python translator.py paper_v2.pdf --model gemini-1.5-pro --working-dir /path/to/my/latex_output</code></pre>
 
     <p class="note"><em>Use quotes around paths with spaces. You might need <code>python3</code> instead of <code>python</code>.</em></p>
 
     <h4>4. Command-Line Options (Flags):</h4>
     <ul>
         <li><code>input_pdf</code> (Positional, Optional): Path to the input PDF (defaults to `input.pdf`).</li>
-        <li><code>--model MODEL_KEY</code> or <code>-m MODEL_KEY</code>: Specify a preferred model key (e.g., `claude-3-opus`, `gpt-4o`) to try first in the processing sequence. Use <code>--list-models</code> to see available keys.</li>
+        <li><code>--model MODEL_KEY</code> or <code>-m MODEL_KEY</code>: Specify the model key (e.g., `claude-3.5-sonnet`, `gpt-4o`) to use for translation. Use <code>--list-models</code> to see available keys. If omitted, uses the `DEFAULT_MODEL_KEY` set in the script.</li> <!-- Updated -->
         <li><code>--working-dir PATH</code> or <code>-w PATH</code>: Set the directory for all outputs (logs, state, .tex, .pdf, failed pages). Defaults to `./latex_processing_multi`.</li>
-        <li><code>--list-models</code> or <code>-l</code>: Display available model keys configured in the script and the default processing sequence order, then exit.</li>
+        <li><code>--list-models</code> or <code>-l</code>: Display available model keys configured in the script, then exit.</li> <!-- Updated -->
     </ul>
 
     <h4>5. Output Files (in Working Directory):</h4>
@@ -143,38 +145,39 @@ python translator.py paper_v2.pdf --working-dir /path/to/my/latex_output</code><
         <li><code>cumulative_good.pdf</code>: The PDF generated from `cumulative_good.tex`.</li>
         <li><code>processing.log</code>: Detailed log of the translation process.</li>
         <li><code>state.json</code>: Stores the last completed page for resuming.</li>
-        <li><code>model_stats.json</code>: Tracks which models successfully translated which pages and records failures (including compilation failures).</li> <!-- Updated -->
+        <li><code>model_stats.json</code>: Tracks successful translations and failures for the used model.</li> <!-- Updated -->
         <li><code>latex_aux/</code>: Directory containing auxiliary files from LaTeX compilation (`.log`, `.aux`, etc.).</li>
-        <li><code>failed_pages/</code>: Contains images (`.jpg`) of pages that failed all translation attempts.</li>
-        <li><code>*.log</code> (e.g., `compile_fail_*.log`, `report_compile.log`, `compile_fatal_placeholder*.log`): Specific logs for compilation failures.</li> <!-- Updated -->
+        <li><code>failed_pages/</code>: Contains images (`.jpg`) of pages that failed all translation attempts with the selected model.</li> <!-- Updated -->
+        <li><code>*.log</code> (e.g., `compile_fail_*.log`, `report_compile.log`, `compile_fatal_placeholder*.log`): Specific logs for compilation failures.</li>
         <li><code>*final.pdf</code> / <code>*final_with_report.pdf</code>: The final output PDF, potentially merged with reports/appendices.</li>
     </ul>
 
     <h4>6. Resuming and Error Handling:</h4>
     <ul>
-        <li><strong>Resuming:</strong> Simply run the script again with the same input PDF and working directory. It will read `state.json` and continue from the last successfully completed page.</li>
+        <li><strong>Resuming:</strong> Simply run the script again with the same input PDF, the same `--model` (or default), and working directory. It will read `state.json` and continue from the last successfully completed page.</li> <!-- Updated -->
         <li><strong>Failures:</strong>
             <ul>
-                <li>If a model's output causes a compilation error, the script logs it and tries the next model in the sequence.</li> <!-- Updated -->
-                <li>If a page fails all model translation attempts (API or compile errors), its image is saved in `failed_pages/`, a placeholder is inserted in the LaTeX, and processing continues (if the placeholder compiles).</li> <!-- Updated -->
-                <li>If the generated LaTeX fails to compile *even with a placeholder inserted*, it indicates a critical issue (likely in the preamble or previous content). Processing stops, and logs (`compile_fail*.log`, `compile_fatal_placeholder*.log`) should be checked.</li> <!-- Updated -->
+                <li>If the selected model's output causes a compilation error, the script logs it and retries the *same model* up to `MAX_RETRIES_PER_MODEL` times.</li> <!-- Updated -->
+                <li>If a page fails all retry attempts (API or compile errors), its image is saved in `failed_pages/`, a placeholder is inserted in the LaTeX, and processing continues (if the placeholder compiles).</li> <!-- Updated -->
+                <li>If the generated LaTeX fails to compile *even with a placeholder inserted*, it indicates a critical issue (likely in the preamble or previous content). Processing stops, and logs (`compile_fail*.log`, `compile_fatal_placeholder*.log`) should be checked.</li>
                 <li>Fix errors in `cumulative_good.tex` manually, then rerun the script to resume from the corrected state.</li>
             </ul>
         </li>
     </ul>
 
 
-    <h3>Key Features of the Multi-Model Script</h3>
+    <h3>Key Features of the Single-Model Script</h3> <!-- Updated -->
     <ul>
-        <li><strong>Multi-Provider Processing:</strong> Leverages Claude, GPT, and Gemini models sequentially for robustness and potentially better results.</li>
-        <li><strong>Configurable Model Sequence:</strong> Allows prioritizing preferred models in the processing order.</li>
+        <li><strong>Single-Model Focused:</strong> Uses one specified AI model (Claude, GPT, or Gemini) for consistency and cost control.</li> <!-- Updated -->
+        <li><strong>Retry Mechanism:</strong> Retries API calls or recompiles if the selected model fails initially.</li> <!-- Updated -->
+        <li><strong>Configurable Model Choice:</strong> Allows specifying the desired translation model via command line or setting a default.</li> <!-- Updated -->
         <li><strong>Page-by-Page Processing:</strong> Handles long documents by processing one page at a time.</li>
         <li><strong>Image-Based Translation:</strong> Converts PDF pages to images for multimodal AI input.</li>
-        <li><strong>Contextual Prompting:</strong> Provides models with context from the previous page's LaTeX output to improve consistency.</li>
-        <li><strong>Inline Compilation Checks:</strong> Attempts `pdflatex` compilation after *each model's successful API response* to catch LaTeX errors early and allow fallback to other models.</li> <!-- Updated -->
-        <li><strong>Graceful Failure Handling:</strong> Tries multiple models if one produces invalid LaTeX. Inserts placeholders only if *all* models fail for a page. Saves images of failed pages.</li> <!-- Updated -->
+        <li><strong>Contextual Prompting:</strong> Provides the model with context from the previous page's LaTeX output to improve consistency.</li>
+        <li><strong>Inline Compilation Checks:</strong> Attempts `pdflatex` compilation after each successful API response to catch LaTeX errors early and trigger retries.</li> <!-- Updated -->
+        <li><strong>Graceful Failure Handling:</strong> Retries the same model if it produces invalid LaTeX. Inserts placeholders only if all retries fail for a page. Saves images of failed pages.</li> <!-- Updated -->
         <li><strong>State Management:</strong> Automatically saves and resumes progress using `state.json`.</li>
-        <li><strong>Performance Reporting:</strong> Generates statistics (`model_stats.json`) and a final PDF report summarizing which models were used and which pages failed.</li>
+        <li><strong>Performance Reporting:</strong> Generates statistics (`model_stats.json`) and a final PDF report summarizing performance.</li> <!-- Updated -->
         <li><strong>Command-Line Interface:</strong> Flexible control via CLI arguments.</li>
         <li><strong>Detailed Logging:</strong> Records progress and errors to `processing.log`.</li>
     </ul>
