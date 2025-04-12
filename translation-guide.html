@@ -1,3 +1,5 @@
+
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -53,7 +55,7 @@
 
 <h2>Situation 2: Translation for Longer Papers via the Multi-API Script</h2>
 
-<p>For longer papers, the provided Python script (`test.py`) automates a page-by-page translation process using a tournament of different AI models.</p>
+<p>For longer papers, the provided Python script (`translator.py`) automates a page-by-page translation process using a tournament of different AI models.</p>
 
 <p>The script workflow:</p>
 <ol>
@@ -74,14 +76,14 @@
     <li>At the end, generates a report summarizing model performance and optionally merges it with the main PDF.</li>
 </ol>
 
-<p>We provide the <a href="test.py" download>example Python script (test.py)</a>.
-<!-- Make sure test.py is in the same directory -->
+<p>We provide the <a href="translator.py" download>example Python script (translator.py)</a>.
+<!-- Make sure translator.py is in the same directory -->
 To use this script, you need API keys for the AI providers you wish to use and a correctly configured Python environment.</p>
 
 <p>Here's a more detailed explanation:</p>
 
 <div class="ai-explanation"> <!-- Start of AI Explanation -->
-    <h3>How to Use the Multi-Model Python Script (test.py)</h3>
+    <h3>How to Use the Multi-Model Python Script (translator.py)</h3>
 
     <h4>1. Requirements:</h4>
     <ul class="requirements">
@@ -103,15 +105,15 @@ To use this script, you need API keys for the AI providers you wish to use and a
 
     <h4>2. Configuration (Optional):</h4>
     <ul>
-        <li><strong>Model Queue/Configs:</strong> Edit the `get_model_configs()` function and `DEFAULT_MODEL_QUEUE` list within `test.py` to add/remove models or change their priority.</li>
+        <li><strong>Model Queue/Configs:</strong> Edit the `get_model_configs()` function and `DEFAULT_MODEL_QUEUE` list within `translator.py` to add/remove models or change their priority.</li>
         <li><strong>Working Directory:</strong> By default, outputs go to `latex_processing_multi`. Use the `--working-dir` flag to change this.</li>
     </ul>
 
 
     <h4>3. Running the Script:</h4>
-    <p>Open your terminal/command prompt in the directory containing `test.py`.</p>
+    <p>Open your terminal/command prompt in the directory containing `translator.py`.</p>
     <p><strong>Basic Command:</strong></p>
-    <pre><code>python test.py [path/to/your/input.pdf] [options...]</code></pre>
+    <pre><code>python translator.py [path/to/your/input.pdf] [options...]</code></pre>
     <ul>
         <li>The <strong>Input PDF Path</strong> is the first (optional) argument. If omitted, it defaults to `input.pdf` in the script's directory.</li>
         <li>All other options use flags (e.g., <code>--model</code>, <code>--working-dir</code>).</li>
@@ -119,13 +121,13 @@ To use this script, you need API keys for the AI providers you wish to use and a
 
     <p><strong>Example Commands:</strong></p>
     <pre><code class="language-bash"># Translate my_paper.pdf using default settings
-python test.py my_paper.pdf
+python translator.py my_paper.pdf
 
 # Translate input.pdf, preferring claude-3.7-sonnet first
-python test.py --model claude-3.7-sonnet
+python translator.py --model claude-3.7-sonnet
 
 # Translate paper_v2.pdf and store outputs in a custom directory
-python test.py paper_v2.pdf --working-dir /path/to/my/latex_output</code></pre>
+python translator.py paper_v2.pdf --working-dir /path/to/my/latex_output</code></pre>
 
     <p class="note"><em>Use quotes around paths with spaces. You might need <code>python3</code> instead of <code>python</code>.</em></p>
 
@@ -181,3 +183,4 @@ python test.py paper_v2.pdf --working-dir /path/to/my/latex_output</code></pre>
 
 </body>
 </html>
+```
