@@ -5,15 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <!-- You might want to link your existing CSS here if you have one -->
     <!-- <link rel="stylesheet" href="assets/css/style.css"> -->
-    <title>How to Translate Math PDFs into LaTeX using AI</title>
+    <title>How to Translate Math PDFs into LaTeX using AI (Jointly written with Gemini 2.5 Pro)</title>
     <style>
         /* Basic styling for readability */
         body { font-family: sans-serif; line-height: 1.6; margin: 2em; }
-        h1, h2 { margin-top: 1.5em; }
-        pre { background-color: #f4f4f4; padding: 1em; border: 1px solid #ddd; overflow-x: auto; }
+        h1, h2, h3 { margin-top: 1.5em; }
+        pre { background-color: #f4f4f4; padding: 1em; border: 1px solid #ddd; overflow-x: auto; white-space: pre-wrap; /* Wrap long lines */ word-wrap: break-word; /* Break words if needed */ }
         code { font-family: monospace; }
         ul, ol { margin-left: 1.5em; }
         li { margin-bottom: 0.5em; }
+        .gemini-explanation { border-left: 4px solid #4285F4; /* Google blue */ padding-left: 1em; margin-top: 1.5em; }
     </style>
 </head>
 <body>
@@ -54,10 +55,71 @@
 
 <p>In order for this automated approach to work, you first need to obtain a Gemini API key and set up a Python environment on your computer. Once that's done, you can use the script provided below. Note that I generated all the code presented here with assistance from Gemini.</p>
 
-<p>You can download the example Python script here: <a href="pdf_latex_translator.py" download>pdf_latex_translator.py</a>.</p>
-<!-- Make sure pdf_latex_translator.py is in the same directory as this HTML file, or adjust the href path -->
+<p>I'll let Gemini explain how to use the script below:</p>
 
-<p>To generate or modify such a script yourself, you can provide a detailed prompt to an AI coding assistant. See the comments within the downloadable script file for the type of prompt used for its generation.</p>
+<div class="gemini-explanation"> <!-- Added a div for potential styling -->
+    <h3>How to Use the Python Script</h3>
+    <p>(Assuming you have downloaded the <code>pdf_latex_translator.py</code> script)</p>
+
+    <h4>1. Install Libraries:</h4>
+    <p>Open your terminal or command prompt and run:</p>
+    <pre><code>pip install google-generativeai pypdf python-dotenv</code></pre>
+
+    <h4>2. Set up API Key:</h4>
+    <ul>
+        <li>Create a file named <code>.env</code> in the same directory as the script.</li>
+        <li>Add your Gemini API key to the <code>.env</code> file like this:
+            <pre><code>GEMINI_API_KEY=YOUR_API_KEY_HERE</code></pre>
+            (Replace <code>YOUR_API_KEY_HERE</code> with your actual key).
+        </li>
+        <li>Alternatively, you can set <code>GEMINI_API_KEY</code> as an environment variable directly in your operating system.</li>
+    </ul>
+
+    <h4>3. Run the Script:</h4>
+    <p>Execute the script from your terminal:</p>
+    <pre><code>python pdf_latex_translator.py "path/to/your/document.pdf" "path/to/output/translated_document.tex"</code></pre>
+    <ul>
+        <li>Replace <code>"path/to/your/document.pdf"</code> with the actual path to your input PDF file.</li>
+        <li>Replace <code>"path/to/output/translated_document.tex"</code> with the desired path for the output LaTeX file.</li>
+    </ul>
+
+    <h4>4. Optional Arguments:</h4>
+    <p>You can modify the script's behavior using command-line arguments:</p>
+    <ul>
+        <li><code>--env path/to/.env</code>: Specify a different path for the <code>.env</code> file if it's not in the same directory.</li>
+        <li><code>--chunk_size N</code>: Set the number of pages per chunk if AI chunking fails or is disabled (default is 10).</li>
+        <li><code>--disable_ai_chunking</code>: Force the script to use fixed-size chunks instead of trying the experimental AI chunking.</li>
+        <li><code>--model model_name</code>: Specify a different Gemini model (e.g., <code>gemini-1.0-pro</code>). The default is typically <code>gemini-1.5-flash</code> which is often suitable for this task. Check Google's documentation for available models and capabilities.</li>
+    </ul>
+
+    <h3>Explanation and Key Features of the Script</h3>
+    <ul>
+        <li><strong>API Key Loading:</strong> Securely loads the API key using <code>python-dotenv</code>.</li>
+        <li><strong>PDF Handling:</strong> Uses <code>pypdf</code> to read page count and extract text from specified page ranges, with basic error handling.</li>
+        <li><strong>Chunking Strategy:</strong>
+            <ul>
+                <li>Attempts experimental AI chunking (<code>attempt_ai_chunking</code>) by default, asking Gemini for logical page ranges based on initial content.</li>
+                <li>Falls back to reliable fixed-size chunks (<code>generate_fixed_chunk_ranges</code>) if AI chunking fails, returns invalid data, or is explicitly disabled.</li>
+            </ul>
+        </li>
+        <li><strong>Gemini Translation:</strong>
+            <ul>
+                <li>Constructs specific prompts for each chunk.</li>
+                <li>The first chunk's prompt requests the LaTeX preamble and <code>\begin{document}</code>.</li>
+                <li>Subsequent chunks' prompts request only the translated body content, preserving math.</li>
+                <li>Includes basic safety settings and error handling for API calls.</li>
+                <li>Cleans potential markdown fences (e.g., ```latex ... ```) from the response.</li>
+            </ul>
+        </li>
+        <li><strong>Combining Output:</strong> Joins translated parts, ensuring only one <code>\begin{document}</code>...<code>\end{document}</code> pair exists in the final file.</li>
+        <li><strong>Error Handling:</strong> Includes error checks for file I/O, PDF reading, and API calls, logging issues and adding error markers in the output <code>.tex</code> file for failed chunks.</li>
+        <li><strong>Command-Line Interface:</strong> Uses <code>argparse</code> for easy configuration via command-line arguments.</li>
+        <li><strong>Logging:</strong> Provides informative messages during execution.</li>
+    </ul>
+</div> <!-- End of gemini-explanation div -->
+
+<p>You can download the example Python script discussed above here: <a href="pdf_latex_translator.py" download>pdf_latex_translator.py</a>.</p>
+<!-- Make sure pdf_latex_translator.py is in the same directory as this HTML file, or adjust the href path -->
 
 </body>
 </html>
