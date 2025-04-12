@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -53,14 +54,14 @@
 </ol>
 
 <!-- User's corrected paragraph -->
-<p>We provide an <a href="pdf_latex_translator.py" download>example script</a> written with Gemini.
-<!-- Make sure pdf_latex_translator.py is in the same directory as this HTML file, or adjust the href path -->
-In order the use this script, you first need to obtain a Gemini API key and set up a Python environment with the necessary libraries installed. </p>
+<p>We provide an <a href="test.py" download>example script</a> written with Gemini.
+<!-- Make sure test.py is in the same directory as this HTML file, or adjust the href path -->
+In order to use this script, you first need to obtain a Gemini API key and set up a Python environment with the necessary libraries installed. </p>
 
 <p>I'll let Gemini explain in more detail:</p>
     <div class="gemini-explanation"> <!-- Start of Gemini's Explanation -->
     <h3>How to Use the Python Script</h3>
-    <p>(Assuming you have downloaded the image-based translator script with compilation checks, let's call it <code>pdf_latex_translator_compile.py</code>)</p>
+    <p>(Assuming you have downloaded the script we developed, <code>test.py</code>)</p>
 
     <h4>1. Requirements:</h4>
     <ul>
@@ -70,7 +71,7 @@ In order the use this script, you first need to obtain a Gemini API key and set 
             <pre><code>pip install google-generativeai pdf2image Pillow pypdf python-dotenv</code></pre>
         </li>
         <li>
-            <strong>External Dependency: Poppler:</strong> The `pdf2image` library requires the Poppler PDF rendering library. You must install it separately (see previous instructions). <em>Failure to install Poppler correctly is a common reason for errors.</em>
+            <strong>External Dependency: Poppler:</strong> The `pdf2image` library requires the Poppler PDF rendering library. You must install it separately. <em>Failure to install Poppler correctly is a common reason for errors.</em>
         </li>
         <li>
             <strong>External Dependency: LaTeX Distribution:</strong> This version of the script **requires a working LaTeX installation** (like TeX Live, MiKTeX) on your system. The command <code>pdflatex</code> must be runnable from your terminal (i.e., in your system's PATH).
@@ -82,7 +83,7 @@ In order the use this script, you first need to obtain a Gemini API key and set 
     <p>
         To run the script, open your terminal or command prompt. The basic command structure is:
     </p>
-    <pre><code>python [script_name.py] [input_pdf_path] [output_tex_path] [options...]</code></pre>
+    <pre><code>python test.py [input_pdf_path] [output_tex_path] [options...]</code></pre>
     <p>
         Crucially, the script **requires two positional arguments** that must come first and in this specific order:
     </p>
@@ -95,15 +96,15 @@ In order the use this script, you first need to obtain a Gemini API key and set 
     </p>
     <p><strong>Example Command:</strong></p>
     <!-- Corrected Example Command -->
-    <pre><code>python pdf_latex_translator_compile.py input.pdf output.tex --start_page 10 --model gemini-2.5-pro-preview-03-25</code></pre>
+    <pre><code>python test.py raynaud_gruson.pdf test.tex --model gemini-2.5-pro-exp-03-25 --start_page 1</code></pre>
     <ul>
         <li>In this example:
             <ul>
-              <li><code>pdf_latex_translator_compile.py</code> is the script name.</li>
-              <li><code>input.pdf</code> is the <strong>required input PDF path</strong>.</li>
-              <li><code>output.tex</code> is the <strong>required output TeX path</strong>.</li>
+              <li><code>test.py</code> is the script name.</li>
+              <li><code>raynaud_gruson.pdf</code> is the <strong>required input PDF path</strong>.</li>
+              <li><code>test.tex</code> is the <strong>required output TeX path</strong>.</li>
               <!-- Corrected formatting for the optional args description -->
-              <li><code>--start_page 10</code> and <code>--model gemini-2.5-pro-preview-03-25</code> are optional arguments placed after the required paths.</li>
+              <li><code>--model gemini-2.5-pro-exp-03-25</code> and <code>--start_page 1</code> are optional arguments placed after the required paths.</li>
             </ul>
         </li>
         <li>Use quotes around paths if they contain spaces.</li>
@@ -115,12 +116,12 @@ In order the use this script, you first need to obtain a Gemini API key and set 
     <ul>
         <li><code>--env path/to/.env</code>: Specify a different path for your <code>.env</code> file.</li>
         <li>
-             <!-- Updated model description based on user's HTML -->
-            <code>--model model_name</code>: Specify a Gemini vision model. The script defaults to <code>gemini-2.5-pro-exp-03-25</code> (a strong free experimental model as of April 2025; note potential limits/changes). Consider the paid alternative <code>gemini-2.5-pro-preview-03-25</code> for higher limits/stability. Always check Google's documentation.
+            <!-- Updated model description based on test.py -->
+            <code>--model model_name</code>: Specify a Gemini vision model. The script defaults to <code>gemini-1.5-pro-latest</code>. Other options like <code>gemini-1.5-flash-latest</code> or experimental models like <code>gemini-2.5-pro-exp-03-25</code> (used in the example) might be available. Always check Google's documentation for current model names and capabilities.
         </li>
-        <li><code>--start_page N</code>: Start processing from page N (1-based). Useful for resuming.</li>
-        <li><code>--chunk_size N</code>: Pages to process before attempting LaTeX compilation (default: 10).</li>
-         <li><code>--max_context N</code>: Max chars of previous chunk context to send to API (default: 15000).</li> <!-- Added max_context arg -->
+        <li><code>--start_page N</code>: Start processing from page N (1-based). Useful for resuming. Defaults to 1.</li>
+        <li><code>--chunk_size N</code>: Pages to process before attempting LaTeX compilation (default: 7).</li>
+         <li><code>--body_context_len N</code>: Max characters of previous BODY context to send to API (default: 10000). Set to 0 to disable body context.</li> <!-- Corrected argument name and default -->
     </ul>
 
     <h3>Explanation and Key Features of the Script</h3>
@@ -128,15 +129,17 @@ In order the use this script, you first need to obtain a Gemini API key and set 
     <ul>
         <li><strong>API Key Loading:</strong> Securely loads the Gemini API key.</li>
         <li><strong>PDF Page Handling:</strong> Uses <code>pypdf</code> for page count and <code>pdf2image</code> (requires Poppler) for page-to-image conversion.</li>
-        <li><strong>Page-by-Page Image Translation:</strong> Iterates through pages, sending each image to the specified Gemini vision model (defaulting to <code>gemini-2.5-pro-exp-03-25</code>) for LaTeX generation.</li>
-        <li><strong>Enhanced Contextual Prompts:</strong> Includes the LaTeX from the **previous successfully compiled chunk** (size controlled by <code>--chunk_size</code>, length by <code>--max_context</code>) as reference context to improve consistency.</li>
-        <li><strong>Chunk-Based Compilation Check:</strong> After processing a chunk, writes the accumulated LaTeX and attempts compilation using <code>pdflatex</code> (requires LaTeX installed), saving the log.</li>
-        <li><strong>Error Handling & Halting on Failure:</strong> Handles API, file, and image conversion errors. **Stops execution** if a LaTeX compilation fails, saving the faulty <code>.tex</code> file/log, guiding the user to fix errors and restart using <code>--start_page</code>.</li>
+        <li><strong>Page-by-Page Image Translation:</strong> Iterates through pages, sending each image to the specified Gemini vision model (defaulting to <code>gemini-1.5-pro-latest</code>) for LaTeX generation.</li>
+        <li><strong>Enhanced Contextual Prompts:</strong> Includes the preamble and recent body LaTeX content (length controlled by <code>--body_context_len</code>) as reference context to improve consistency.</li>
+        <li><strong>Chunk-Based Compilation Check:</strong> After processing a chunk (size controlled by <code>--chunk_size</code>), writes the accumulated LaTeX and attempts compilation using <code>pdflatex</code> (requires LaTeX installed), saving the log.</li>
+        <li><strong>AI-Assisted Preamble Fixing:</strong> If initial compilation fails, attempts to ask the AI to suggest preamble updates based on the error log and recompile.</li>
+        <li><strong>Error Handling & Halting on Failure:</strong> Handles API, file, image conversion, and compilation errors. **Stops execution** if a LaTeX compilation fails after the AI fix attempt (or if no fix is suggested), saving the faulty <code>.tex</code> file/log, guiding the user to fix errors and restart using <code>--start_page</code>.</li>
         <li><strong>Combining Output:</strong> Successfully compiled chunks are progressively added to the main output file.</li>
-        <li><strong>Simplified State/Resume:</strong> Uses <code>--start_page</code> for basic resume capability.</li>
+        <li><strong>Resume Capability:</strong> Uses <code>--start_page</code> and loads existing preamble/body context from the output file if resuming.</li>
         <li><strong>Command-Line Interface:</strong> Uses <code>argparse</code> for required positional arguments (PDF input, TeX output) and optional flags.</li>
         <li><strong>Logging:</strong> Provides progress updates and error messages.</li>
     </ul>
 </div> <!-- End of gemini-explanation div -->
 </body>
 </html>
+```
