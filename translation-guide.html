@@ -20,29 +20,30 @@
         .requirements ul li strong { display: inline-block; min-width: 150px; } /* Align requirement titles */
         .warning { color: #dc3545; font-weight: bold; }
         .note { font-style: italic; color: #555; }
-        /* Simple table styling for comparison */
-        table.comparison { border-collapse: collapse; width: 100%; margin-top: 1.5em; }
+        /* Simple table styling for comparison (No longer used) */
+        /* table.comparison { border-collapse: collapse; width: 100%; margin-top: 1.5em; }
         table.comparison th, table.comparison td { border: 1px solid #ddd; padding: 8px; text-align: left; vertical-align: top;}
-        table.comparison th { background-color: #f2f2f2; }
+        table.comparison th { background-color: #f2f2f2; } */
     </style>
 </head>
 <body>
 
 <h1>How to Translate a Math PDF (Co-written with Gemini 2.5 Pro)</h1>
 
-<p>Nowadays, multimodal AI models can take as input a math paper in a non-English language and output a translation directly in LaTeX. Below is a guide on this. Before proceeding, beware that there are always risks of hallucination or error from the AI and from the fact that this guide was written in April 2025 and was suboptimal even when written.</p>
+<p>Nowadays, multimodal AI models can take as input a math paper in a non-English language and output a translation directly in LaTeX. Below is a guide on this. Before proceeding, beware that there are always risks of hallucination or error from the AI and from the fact that this guide was written in April 2025 and was suboptimal even when written.</p> 
 
-<p>A quick note: for this to work, the core capability for this task has to exist in the multimodal AI itself. The guide below merely provides scaffolding to overcome the following two common challenges:</p>
+<p>A quick note: for this to work, the core capability for this task has to exist in the multimodal AI itself. The guide below merely provides scaffolding to overcome the following common challenges:</p>
 <ul>
     <li><strong>Output Length Limits:</strong> AIs often can't generate the entire LaTeX for a long paper in one output, especially via API calls.</li>
-    <li><strong>AI Confusion from Input Size / Context Limits:</strong> Processing hundreds of pages of math can sometimes lead to a degradation in translation ability or increased errors. Providing sufficient context without exceeding model limits is crucial.</li>
+    <li><strong>AI Confusion from Input Size / Context Limits:</strong> Processing hundreds of pages of math can sometimes lead to a degradation in translation ability or increased errors.</li>
+    <li>[Note from Gemini] Beyond the challenges mentioned above, achieving consistent formatting, handling complex layouts (multi-column, figures), and ensuring perfect mathematical fidelity remain difficult.</li>
 </ul>
 
 <p>We divide this guide into two main situations.</p>
 
 <h2>Situation 1 (Easiest): Translating Short Papers (e.g., < 20 pages)</h2>
 
-<p>If the paper is short, you can often translate it directly using a chat interface for any capable multimodal AI model (like Google's AI Studio for Gemini).</p>
+<p>If the paper is short, you can often translate it directly using a chat interface for any capable multimodal AI model (like Google's AI Studio for Gemini, Anthropic's Console for Claude, or OpenAI's ChatGPT).</p>
 <ol>
     <li><strong>Method:</strong> Upload the PDF directly into the chat interface.</li>
     <li><strong>Prompt:</strong> Use a prompt like this:
@@ -51,224 +52,133 @@
     <li><strong>Process:</strong> Copy the AI's generated LaTeX output, paste it into your LaTeX editor (e.g., Overleaf), compile, and carefully review the resulting PDF.</li>
 </ol>
 
-<h2>Situation 2: Translation for Longer Papers via an API</h2>
+<h2>Situation 2: Translation for Longer Papers via an API Script</h2>
 
-<p>For longer papers, we must divide the paper into manageable chunks (pages) for translation. Using AI APIs (Anthropic, Google, OpenAI), it is possible to write code to automate this process. The philosophy here is that the scaffolding imposed on the AI model should be minimal, yet robust enough to handle failures and manage context.</p>
+<p>For longer papers, we must divide the paper into manageable chunks (groups of pages) for translation. Using AI APIs (Anthropic, Google, OpenAI), it is possible to write code to automate this process. The philosophy here is that the scaffolding imposed on the AI model should be minimal, yet robust enough to handle failures and manage context effectively by processing the document in semantically relevant chunks.</p>
 
-<p>We provide two example scripts written with Gemini, each implementing a different strategy:</p>
+<p>We provide an example script co-written with Gemini:</p>
 <ul>
-    <li><a href="translator.py" download>`translator.py`</a>: Uses a **Multi-Model Tournament** approach.</li>
-    <li><a href="translator2.py" download>`translator2.py`</a>: Uses a **Single Model, Full Context** approach.</li>
+    <li><a href="translator.py" download>`translator.py`</a>: Uses a **Chunk-Based, AI-Assisted Synthesis** approach.</li>
 </ul>
-<!-- Make sure translator.py and translator2.py are in the same directory as this HTML file, or adjust the href paths -->
-<p>In order to use these scripts, you first need to obtain API keys for the relevant AI providers and set up a Python environment with the necessary libraries installed.</p>
+<!-- Make sure test4.py is in the same directory as this HTML file, or adjust the href path -->
+<p>In order to use this script, you first need to obtain an API key for the relevant AI provider and set up a Python environment with the necessary libraries installed.</p>
 
-<p>I'll let Gemini explain the usage of each script in more detail:</p>
+<p>I'll let Gemini explain the usage of this script in more detail:</p>
 
-<!-- =========================================================== -->
-<!-- Explanation for Script 1: translator.py (Multi-Model)     -->
-<!-- =========================================================== -->
+<!-- ================================================================= -->
+<!-- Explanation for Script: test4.py (Chunk-Based Synthesis)         -->
+<!-- ================================================================= -->
 <div class="gemini-explanation">
-    <h3>Script 1: Multi-Model Tournament (`translator.py`)</h3>
-    <p>This script attempts translation page-by-page using a queue of different AI models (Claude, Gemini, GPT). If one model fails, it tries the next, cycling through the queue with retries before inserting a placeholder. This enhances robustness against single-model failures or refusals.</p>
+    <h3>Script: Chunk-Based AI Translation (`test4.py`)</h3>
+    <p>This script divides the input PDF into logical chunks (using AI analysis or fixed page counts), translates each chunk individually using a *single selected AI model*, and then attempts to synthesize a coherent final LaTeX document. It extracts the preamble and body from each successfully compiled chunk and uses AI again to merge the preambles intelligently.</p>
 
     <h4>1. Requirements:</h4>
     <ul class="requirements">
         <li><strong>Python:</strong> Version 3.x recommended. Use a virtual environment (`venv`).</li>
         <li><strong>Python Packages:</strong> Install via pip:
-            <pre><code>pip install google-generativeai anthropic openai pdf2image Pillow pypdf</code></pre>
+            <pre><code>pip install google-generativeai openai anthropic pypdf python-dotenv httpx</code></pre>
+            <p class="note">(Note: `pdf2image` and `Pillow` are no longer needed as the script uploads PDF chunks directly if the model supports it).</p>
         </li>
-        <li><strong>Poppler:</strong> Required by `pdf2image`. Install system-wide (e.g., `brew install poppler`, `sudo apt-get install poppler-utils`). Ensure it's in your PATH. <span class="warning">Installation issues are common!</span></li>
-        <li><strong>LaTeX Distribution:</strong> A working installation (TeX Live, MiKTeX) is **required**. The `pdflatex` command must be runnable from your terminal.</li>
-        <li><strong>API Keys:</strong> Set environment variables for *all providers you might want to use*:
+        <!-- Poppler is no longer needed -->
+        <li><strong>LaTeX Distribution:</strong> A working installation (TeX Live, MiKTeX) is **required**. The `pdflatex` command must be runnable from your terminal for compilation checks and final output generation.</li>
+        <li><strong>API Key:</strong> Set the environment variable for the *provider of the model you intend to use*:
             <ul>
-                <li><code>ANTHROPIC_API_KEY</code> (for Claude models)</li>
-                <li><code>OPENAI_API_KEY</code> (for GPT models)</li>
-                <li><code>GOOGLE_API_KEY</code> (for Gemini models)</li>
+                <li><code>GOOGLE_API_KEY</code> (or <code>GEMINI_API_KEY</code>) for Gemini models</li>
+                <li><code>OPENAI_API_KEY</code> for OpenAI models</li>
+                <li><code>ANTHROPIC_API_KEY</code> for Claude models</li>
             </ul>
-             The script will skip models from providers whose keys are not found.
+             Get keys from their respective websites (Google AI Studio, OpenAI Platform, Anthropic Console). The script will fail if the key for the selected provider/model is not found.
         </li>
     </ul>
 
     <h4>2. Configuration (Optional):</h4>
     <ul>
-        <li><strong>Model Configs/Queue:</strong> Edit `get_model_configs()` and `DEFAULT_MODEL_QUEUE` in `translator.py` to adjust models and their trial order.</li>
-        <li><strong>Working Directory:</strong> Hardcoded to `./latex_processing`.</li>
-        <li><strong>Retries/Cycles:</strong> Adjust `MAX_RETRIES_PER_MODEL` and `MAX_MODEL_CYCLES` constants.</li>
+        <li><strong>Model Configs:</strong> Edit `get_model_configs()` in `test4.py` to add/update model details or change defaults in `DEFAULT_MODEL_KEY_MAP`.</li>
+        <li><strong>Chunk Size:</strong> Adjust `TARGET_PAGES_PER_CHUNK` constant or use the `--chunk-size` flag (affects fallback chunking if AI definition fails).</li>
+        <li><strong>Working Directory:</strong> Defaults to `./latex_processing_llm`. Use the `--working-dir` flag to change this.</li>
+        <li><strong>Retries:</strong> Adjust `MAX_CHUNK_RETRIES` for API/compile attempts per chunk.</li>
     </ul>
-
 
     <h4>3. Running the Script:</h4>
-    <p>In the directory containing `translator.py`:</p>
-    <pre><code>python translator.py [path/to/input.pdf] [--model PREFERRED_MODEL_KEY]</code></pre>
+    <p>Open your terminal/command prompt in the directory containing `test4.py`.</p>
+    <p><strong>Basic Command (using provider defaults):</strong></p>
+    <pre><code>python test4.py [path/to/your/input.pdf] [--provider PROVIDER] [options...]</code></pre>
+    <p><strong>Command with Specific Model:</strong></p>
+    <pre><code>python test4.py [path/to/your/input.pdf] --model MODEL_KEY [options...]</code></pre>
     <ul>
-        <li>Input PDF defaults to `input.pdf`.</li>
-        <li><code>--model</code> specifies a model to try *first*, before cycling through the rest of the default queue.</li>
-    </ul>
-    <p><strong>Example:</strong></p>
-    <pre><code class="language-bash"># Translate my_paper.pdf, try gpt-4o first
-python translator.py my_paper.pdf --model gpt-4o</code></pre>
-
-    <h4>4. Command-Line Options:</h4>
-    <ul>
-        <li><code>input_pdf</code> (Positional, Optional): Path to input PDF.</li>
-        <li><code>--model MODEL_KEY</code> or <code>-m MODEL_KEY</code>: Preferred model to try first.</li>
-        <li><code>--list-models</code> or <code>-l</code>: List available models and default queue, then exit.</li>
+        <li>The <strong>Input PDF Path</strong> is the first (optional) argument. If omitted, it defaults to `input.pdf`.</li>
+        <li>Use <code>--provider</code> (gemini, openai, claude) to select the AI service.</li>
+        <li>Use <code>--model</code> to specify an exact model key (e.g., `gemini-2.5-pro-preview`, `gpt-4o`, `claude-3.7-sonnet`). This overrides the provider's default.</li>
     </ul>
 
-    <h4>5. Key Features:</h4>
+    <p><strong>Example Commands:</strong></p>
+    <pre><code class="language-bash"># Translate my_paper.pdf using the default Gemini model
+python test4.py my_paper.pdf --provider gemini
+
+# Translate paper_v2.pdf using Claude 3.7 Sonnet specifically
+python test4.py paper_v2.pdf --model claude-3.7-sonnet
+
+# Translate input.pdf using OpenAI's gpt-4o, custom chunk size, different working dir
+python test4.py --provider openai --model gpt-4o --chunk-size 15 --working-dir /data/gpt4o_translation
+
+# Clean the working directory before starting a fresh run
+python test4.py my_paper.pdf --provider gemini --clean</code></pre>
+
+    <p class="note"><em>Use quotes around paths with spaces. You might need <code>python3</code> instead of <code>python</code>. The <code>--clean</code> flag will ask for confirmation before deleting the working directory.</em></p>
+
+    <h4>4. Command-Line Options (Flags):</h4>
     <ul>
-        <li>Robustness via multi-model attempts and cycles.</li>
-        <li>Graceful failure with placeholders only after *all* models fail.</li>
-        <li>Contextual prompting using *previous page* snippet (less context, less prone to limits).</li>
-        <li>Inline compilation checks.</li>
-        <li>State management for resuming.</li>
-        <li>Performance report and failed image appendix merging.</li>
+        <li><code>input_pdf</code> (Positional, Optional): Path to input PDF (defaults to `input.pdf`).</li>
+        <li><code>--provider PROVIDER</code> or <code>-p PROVIDER</code>: AI provider ('gemini', 'openai', 'claude'). Uses the default provider if omitted.</li>
+        <li><code>--model MODEL_KEY</code> or <code>-m MODEL_KEY</code>: Specific model key (must belong to the selected provider). Overrides provider default.</li>
+        <li><code>--list-models</code> or <code>-l</code>: Display available model keys configured in the script, then exit.</li>
+        <li><code>--working-dir PATH</code> or <code>-w PATH</code>: Set the directory for all outputs (logs, state, .tex, .pdf, chunks). Defaults to `./latex_processing_llm`.</li>
+        <li><code>--chunk-size N</code> or <code>-c N</code>: Target pages per chunk (for fallback or potentially AI guidance). Defaults to 10.</li>
+        <li><code>--clean</code>: Delete the working directory before starting (prompts for confirmation).</li>
     </ul>
-    <p class="note">See the script's code for the full list of available models (via `--list-models`) and output files generated in the `latex_processing` directory.</p>
-</div>
 
-<!-- =================================================================== -->
-<!-- Explanation for Script 2: translator2.py (Single Model Full Context) -->
-<!-- =================================================================== -->
-<div class="gemini-explanation">
-    <h3>Script 2: Single Model, Full Context (`translator2.py`)</h3>
-    <p>This script uses only *one* specified AI model for the entire translation process. For each page (after the first), it sends the *entire* previously generated document (preamble + cumulative body, possibly truncated) along with the new page image. The AI is asked to return the *complete updated body*. This aims for better consistency but is highly susceptible to context length limits on long documents.</p>
+     <h4>5. Output Files (in Working Directory):</h4>
+    <ul>
+        <li><code>*_translated.tex</code>: The final synthesized LaTeX source file (e.g., `my_paper_translated.tex`).</li>
+        <li><code>*_translated.pdf</code>: The final compiled PDF output.</li>
+        <li><code>processing.log</code>: Detailed log of the entire process.</li>
+        <li><code>prompts_and_responses.log</code>: Log of prompts sent to the AI and summaries of responses received.</li>
+        <li><code>state.json</code>: Stores the last completed chunk index and other state for resuming.</li>
+        <li><code>chunk-division.txt</code>: JSON file containing the determined chunk definitions (page ranges, descriptions).</li>
+        <li><code>latex_aux/</code>: Directory containing auxiliary files from all LaTeX compilations (`.log`, `.aux`, etc.).</li>
+        <li><code>saved_pdf_chunks/</code>: Contains the individual PDF files created for each chunk sent to the AI.</li>
+        <li><code>failed_chunks/</code>: Contains the generated <code>.tex</code> and compilation <code>.log</code> files for chunks that failed all processing attempts.</li>
+    </ul>
 
-    <h4>1. Requirements:</h4>
-    <ul class="requirements">
-        <li><strong>Python:</strong> Version 3.x recommended (`venv`).</li>
-        <li><strong>Python Packages:</strong>
-            <pre><code>pip install google-generativeai anthropic openai pdf2image Pillow pypdf python-dotenv</code></pre>
-        </li>
-        <li><strong>Poppler:</strong> System-wide installation required.</li>
-        <li><strong>LaTeX Distribution:</strong> Working `pdflatex` required.</li>
-        <li><strong>API Key:</strong> Set environment variable for the *provider of the chosen model*:
+    <h4>6. Resuming and Error Handling:</h4>
+    <ul>
+        <li><strong>Resuming:</strong> Run the script again with the same input PDF, provider/model, and working directory. It reads `state.json` and `chunk-division.txt` to continue from the last successfully completed chunk.</li>
+        <li><strong>Failures:</strong>
             <ul>
-                <li><code>ANTHROPIC_API_KEY</code> OR <code>OPENAI_API_KEY</code> OR <code>GOOGLE_API_KEY</code> (or `GEMINI_API_KEY`).</li>
+                <li>If an API call fails, the script retries up to `MAX_CHUNK_RETRIES` times with backoff.</li>
+                <li>If the LaTeX generated for a chunk fails to compile, the script also retries compilation (potentially after retrying the API call).</li>
+                <li>If a chunk fails all API and compilation attempts, its generated `.tex` and logs are saved in `failed_chunks/`, a placeholder is inserted into the final document structure, and processing continues to the next chunk.</li>
+                <li>If the *final* concatenated document fails to compile, an error is logged, and the final PDF won't be generated. The intermediate `.tex` file will still be available.</li>
+                <li>Check `processing.log` and `failed_chunks/` for details on errors. You might need to manually fix issues in the source `.tex` files or adjust script parameters.</li>
             </ul>
-             Only the key for the selected model's provider is strictly necessary.
         </li>
     </ul>
 
-    <h4>2. Configuration (Optional):</h4>
+    <h4>7. Key Features:</h4>
     <ul>
-        <li><strong>Model Configs:</strong> Edit `get_model_configs()` in `translator2.py`.</li>
-        <li><strong>Default Model:</strong> Change `DEFAULT_MODEL_KEY`.</li>
-        <li><strong>Context Truncation:</strong> Adjust `CONTEXT_TRUNCATION_THRESHOLD_TOKENS`.</li>
-        <li><strong>Retries:</strong> Adjust `MAX_RETRIES_PER_MODEL` (applies only to the chosen model).</li>
+        <li><strong>Chunk-Based Processing:</strong> Divides the PDF into multi-page chunks, suitable for models that handle PDF input directly.</li>
+        <li><strong>AI-Driven Chunking:</strong> Attempts to use the selected AI to determine logical chunk boundaries based on document structure (falls back to fixed size).</li>
+        <li><strong>Preamble Synthesis:</strong> Extracts preambles from successful chunks and uses AI to synthesize a unified final preamble (falls back to basic concatenation).</li>
+        <li><strong>Single Model Per Run:</strong> Uses one selected AI model (Gemini, OpenAI, or Claude) for all AI tasks (chunking, translation, synthesis) in a given run.</li>
+        <li><strong>Robust Retries:</strong> Includes retries for both API calls and LaTeX compilation steps for each chunk.</li>
+        <li><strong>Graceful Chunk Failure:</strong> Inserts placeholders for completely failed chunks rather than stopping the entire process. Saves failed data for diagnosis.</li>
+        <li><strong>State Management:</strong> Automatically saves and resumes progress using `state.json`.</li>
+        <li><strong>Detailed Logging:</strong> Separates general processing logs (`processing.log`) from AI interaction logs (`prompts_and_responses.log`).</li>
+        <li><strong>Command-Line Interface:</strong> Flexible control over provider, model, chunking, and directories.</li>
     </ul>
-
-    <h4>3. Running the Script:</h4>
-    <p>In the directory containing `translator2.py`:</p>
-    <pre><code>python translator2.py [path/to/input.pdf] [--model MODEL_KEY] [--working-dir PATH] [--dpi N] [--max-retries N]</code></pre>
-    <ul>
-        <li>Input PDF defaults to `input.pdf`.</li>
-        <li><code>--model</code> specifies the *single* model to use (defaults to `claude-3.5-sonnet` or similar).</li>
-        <li><code>--working-dir</code> sets the output directory (defaults to `./latex_processing_single_full_context`).</li>
-        <li><code>--dpi</code> sets image conversion resolution.</li>
-        <li><code>--max-retries</code> sets retries for the *single* model.</li>
-    </ul>
-    <p><strong>Example:</strong></p>
-    <pre><code class="language-bash"># Translate paper.pdf using gpt-4o only, output to my_gpt4o_translation
-python translator2.py paper.pdf --model gpt-4o --working-dir my_gpt4o_translation</code></pre>
-
-    <h4>4. Command-Line Options:</h4>
-    <ul>
-        <li><code>input_pdf</code> (Positional, Optional): Path to input PDF.</li>
-        <li><code>--model MODEL_KEY</code> or <code>-m MODEL_KEY</code>: The *single* model to use for all pages.</li>
-        <li><code>--list-models</code> or <code>-l</code>: List available models, then exit.</li>
-        <li><code>--working-dir PATH</code> or <code>-w PATH</code>: Output directory.</li>
-        <li><code>--dpi N</code>: Image resolution.</li>
-        <li><code>--max-retries N</code>: Retries for the chosen model.</li>
-    </ul>
-
-     <h4>5. Key Features:</h4>
-    <ul>
-        <li>Uses only one chosen model throughout.</li>
-        <li>Provides *full* previous document context (preamble + body) to the model (potentially truncated).</li>
-        <li>Aims for higher consistency if context fits model limits.</li>
-        <li><span class="warning">High risk of hitting context limits</span> on medium-to-long documents, potentially causing failures.</li>
-        <li>Retries apply only to the single selected model.</li>
-        <li>Tracks context truncations in statistics.</li>
-        <li>Inline compilation checks, state management, reporting similar to Script 1.</li>
-    </ul>
-     <p class="note">See the script's code for the full list of available models (via `--list-models`) and output files generated in the specified working directory (default `latex_processing_single_full_context`).</p>
 </div>
 
-<!-- =========================================================== -->
-<!-- Comparison Section                                          -->
-<!-- =========================================================== -->
-<h2>Comparing the Two Scripts (`translator.py` vs `translator2.py`)</h2>
-
-<p>Choosing between the two scripts depends on the document length, desired robustness, and tolerance for potential inconsistencies or context limit issues.</p>
-
-<table class="comparison">
-    <thead>
-        <tr>
-            <th>Feature</th>
-            <th>`translator.py` (Multi-Model Tournament)</th>
-            <th>`translator2.py` (Single Model, Full Context)</th>
-        </tr>
-    </thead>
-    <tbody>
-        <tr>
-            <td><strong>Core Strategy</strong></td>
-            <td>Tries a queue of models (Claude, Gemini, GPT) per page with cycles/retries.</td>
-            <td>Uses only one specified model for all pages.</td>
-        </tr>
-        <tr>
-            <td><strong>Context Sent to AI</strong></td>
-            <td>Previous page's LaTeX snippet (small context).</td>
-            <td><em>Entire</em> preceding document (preamble + body, potentially truncated) (large context).</td>
-        </tr>
-        <tr>
-            <td><strong>Pros</strong></td>
-            <td>
-                <ul>
-                    <li>More robust to single model failures/refusals.</li>
-                    <li>Less likely to hit context limits.</li>
-                    <li>Good for very long documents or when unsure which model performs best.</li>
-                </ul>
-            </td>
-            <td>
-                <ul>
-                    <li>Potentially higher translation consistency (single model style).</li>
-                    <li>Simpler logic flow if the chosen model works well.</li>
-                    <li>May capture document-wide context better (if it fits).</li>
-                </ul>
-            </td>
-        </tr>
-        <tr>
-            <td><strong>Cons</strong></td>
-            <td>
-                <ul>
-                    <li>Potential for style inconsistencies between pages translated by different models.</li>
-                    <li>May use more API calls/cost if multiple models are tried frequently.</li>
-                    <li>Context is limited to the previous page.</li>
-                </ul>
-            </td>
-            <td>
-                <ul>
-                    <li>Vulnerable if the chosen model fails repeatedly or refuses content.</li>
-                    <li><span class="warning">Very likely to hit context limits</span> on longer documents, causing failures.</li>
-                    <li>API calls can be slower/more expensive due to large context size.</li>
-                    <li>Context truncation can still lead to loss of information.</li>
-                </ul>
-            </td>
-        </tr>
-        <tr>
-            <td><strong>Best Use Case</strong></td>
-            <td>General purpose, long documents, maximizing chance of completion despite potential model issues.</td>
-            <td>Shorter documents (e.g., < 50-100 pages, depending on model), when a specific powerful model (like Claude 3.7 Sonnet or GPT-4o with large context) is preferred and likely sufficient, prioritizing consistency.</td>
-        </tr>
-         <tr>
-            <td><strong>Default Output Dir</strong></td>
-            <td><code>./latex_processing</code></td>
-            <td><code>./latex_processing_single_full_context</code></td>
-        </tr>
-    </tbody>
-</table>
+<!-- Removed comparison table -->
 
 </body>
 </html>
