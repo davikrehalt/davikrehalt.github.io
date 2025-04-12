@@ -60,16 +60,16 @@
 <ul>
     <li><a href="translator.py" download>`translator.py`</a>: Uses a **Chunk-Based, AI-Assisted Synthesis** approach.</li>
 </ul>
-<!-- Make sure test4.py is in the same directory as this HTML file, or adjust the href path -->
+<!-- Make sure translator.py is in the same directory as this HTML file, or adjust the href path -->
 <p>In order to use this script, you first need to obtain an API key for the relevant AI provider and set up a Python environment with the necessary libraries installed.</p>
 
 <p>I'll let Gemini explain the usage of this script in more detail:</p>
 
 <!-- ================================================================= -->
-<!-- Explanation for Script: test4.py (Chunk-Based Synthesis)         -->
+<!-- Explanation for Script: translator.py (Chunk-Based Synthesis)         -->
 <!-- ================================================================= -->
 <div class="gemini-explanation">
-    <h3>Script: Chunk-Based AI Translation (`test4.py`)</h3>
+    <h3>Script: Chunk-Based AI Translation (`translator.py`)</h3>
     <p>This script divides the input PDF into logical chunks (using AI analysis or fixed page counts), translates each chunk individually using a *single selected AI model*, and then attempts to synthesize a coherent final LaTeX document. It extracts the preamble and body from each successfully compiled chunk and uses AI again to merge the preambles intelligently.</p>
 
     <h4>1. Requirements:</h4>
@@ -93,18 +93,18 @@
 
     <h4>2. Configuration (Optional):</h4>
     <ul>
-        <li><strong>Model Configs:</strong> Edit `get_model_configs()` in `test4.py` to add/update model details or change defaults in `DEFAULT_MODEL_KEY_MAP`.</li>
+        <li><strong>Model Configs:</strong> Edit `get_model_configs()` in `translator.py` to add/update model details or change defaults in `DEFAULT_MODEL_KEY_MAP`.</li>
         <li><strong>Chunk Size:</strong> Adjust `TARGET_PAGES_PER_CHUNK` constant or use the `--chunk-size` flag (affects fallback chunking if AI definition fails).</li>
         <li><strong>Working Directory:</strong> Defaults to `./latex_processing_llm`. Use the `--working-dir` flag to change this.</li>
         <li><strong>Retries:</strong> Adjust `MAX_CHUNK_RETRIES` for API/compile attempts per chunk.</li>
     </ul>
 
     <h4>3. Running the Script:</h4>
-    <p>Open your terminal/command prompt in the directory containing `test4.py`.</p>
+    <p>Open your terminal/command prompt in the directory containing `translator.py`.</p>
     <p><strong>Basic Command (using provider defaults):</strong></p>
-    <pre><code>python test4.py [path/to/your/input.pdf] [--provider PROVIDER] [options...]</code></pre>
+    <pre><code>python translator.py [path/to/your/input.pdf] [--provider PROVIDER] [options...]</code></pre>
     <p><strong>Command with Specific Model:</strong></p>
-    <pre><code>python test4.py [path/to/your/input.pdf] --model MODEL_KEY [options...]</code></pre>
+    <pre><code>python translator.py [path/to/your/input.pdf] --model MODEL_KEY [options...]</code></pre>
     <ul>
         <li>The <strong>Input PDF Path</strong> is the first (optional) argument. If omitted, it defaults to `input.pdf`.</li>
         <li>Use <code>--provider</code> (gemini, openai, claude) to select the AI service.</li>
@@ -113,16 +113,16 @@
 
     <p><strong>Example Commands:</strong></p>
     <pre><code class="language-bash"># Translate my_paper.pdf using the default Gemini model
-python test4.py my_paper.pdf --provider gemini
+python translator.py my_paper.pdf --provider gemini
 
 # Translate paper_v2.pdf using Claude 3.7 Sonnet specifically
-python test4.py paper_v2.pdf --model claude-3.7-sonnet
+python translator.py paper_v2.pdf --model claude-3.7-sonnet
 
 # Translate input.pdf using OpenAI's gpt-4o, custom chunk size, different working dir
-python test4.py --provider openai --model gpt-4o --chunk-size 15 --working-dir /data/gpt4o_translation
+python translator.py --provider openai --model gpt-4o --chunk-size 15 --working-dir /data/gpt4o_translation
 
 # Clean the working directory before starting a fresh run
-python test4.py my_paper.pdf --provider gemini --clean</code></pre>
+python translator.py my_paper.pdf --provider gemini --clean</code></pre>
 
     <p class="note"><em>Use quotes around paths with spaces. You might need <code>python3</code> instead of <code>python</code>. The <code>--clean</code> flag will ask for confirmation before deleting the working directory.</em></p>
 
