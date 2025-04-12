@@ -3,27 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- You might want to link your existing CSS here if you have one -->
-    <!-- <link rel="stylesheet" href="assets/css/style.css"> -->
-    <title>How to Translate a Math PDF (Jointly written with Gemini 2.5 Pro)</title>
-    <style>
-        /* Basic styling for readability */
-        body { font-family: sans-serif; line-height: 1.6; margin: 2em; }
-        h1, h2, h3 { margin-top: 1.5em; }
-        pre { background-color: #f4f4f4; padding: 1em; border: 1px solid #ddd; overflow-x: auto; white-space: pre-wrap; /* Wrap long lines */ word-wrap: break-word; /* Break words if needed */ }
-        code { font-family: monospace; }
-        ul, ol { margin-left: 1.5em; }
-        li { margin-bottom: 0.5em; }
-        .gemini-explanation { border-left: 4px solid #4285F4; /* Google blue */ padding-left: 1em; margin-top: 1.5em; }
-    </style>
+    <title>How to Translate a Math PDF (Co-written with Gemini 2.5 Pro)</title>
+    <!-- Styles removed as requested -->
 </head>
 <body>
 
-<h1>How to Translate Math PDFs into LaTeX using AI (Jointly written with Gemini 2.5 Pro)</h1>
+<h1>How to Translate a Math PDF (Co-written with Gemini 2.5 Pro)</h1>
 
-<p>Nowadays, my preferred method for reading non-English math papers is to feed them into a multimodal AI model and ask for a translation directly into LaTeX format. I find current AI translations mostly sufficient, and rarely need to refer to the original paper. The speed and readability benefits, for me, often outweigh the risks of AI hallucination or error, though you must always weigh this trade-off yourself. Here I record one (probably far from optimal) way of doing this (we will use Gemini 2.5 Pro by default since it is considered a strong model for math as of April 2025).</p>
+<p>Nowadays, multimodal AI models can take as input a math paper in a non-English language and output a translation directly in LaTeX. Below is a guide on this. Before proceeding, beware that there are always risks of hallucination or error from the AI and from the fact that this guide was written in April 2025 and was suboptimal even when written.</p>
 
-<p>The core capability for this task has to exist in the multimodal AI itself for this approach to work. The guide below merely provides scaffolding to overcome the following two common challenges:</p>
+<p>A quick note: for this to work, the core capability for this task has to exist in the multimodal AI itself. The guide below merely provides scaffolding to overcome the following two common challenges:</p>
 <ul>
     <li><strong>Output Length Limits:</strong> AIs often can't generate the entire LaTeX for a long paper in one output, especially via API calls.</li>
     <li><strong>AI Confusion from Input Size:</strong> Processing hundreds of pages of math can sometimes lead to a degradation in translation ability or increased errors.</li>
@@ -44,7 +33,7 @@
 
 <h2>Situation 2: Translation for Longer Papers via an API</h2>
 
-<p>For longer papers, we must divide the paper into manageable chunks for translation. Using the Gemini API, we can write code to automate this process. The philosophy here is that the scaffolding imposed on the AI model should be minimal, so as not to interfere with the AI's own ability to process and translate effectively.</p>
+<p>For longer papers, we must divide the paper into manageable chunks for translation. Using the Gemini API, it is possible to write code to automate this process. The philosophy here is that the scaffolding imposed on the AI model should be minimal, so as not to interfere with the AI's own ability to process and translate effectively.</p>
 
 <p>The basic script workflow involves these steps:</p>
 <ol>
@@ -53,11 +42,12 @@
     <li>Combine the resulting LaTeX pieces generated for each chunk into a single, final <code>.tex</code> file.</li>
 </ol>
 
-<p>In order for this automated approach to work, you first need to obtain a Gemini API key and set up a Python environment on your computer. Once that's done, you can use the script provided below. Note that I generated all the code presented here with assistance from Gemini.</p>
+<!-- User's corrected paragraph -->
+<p>We provide an example script below written with Gemini. In order the use this script, you first need to obtain a Gemini API key and set up a Python environment with the necessary libraries installed. </p>
 
-<p>I'll let Gemini explain how to use the script below:</p>
+<p>I'll let Gemini explain in more detail:</p>
 
-<div class="gemini-explanation"> <!-- Added a div for potential styling -->
+<div> <!-- Removed the class="gemini-explanation" -->
     <h3>How to Use the Python Script</h3>
     <p>(Assuming you have downloaded the <code>pdf_latex_translator.py</code> script)</p>
 
@@ -116,7 +106,7 @@
         <li><strong>Command-Line Interface:</strong> Uses <code>argparse</code> for easy configuration via command-line arguments.</li>
         <li><strong>Logging:</strong> Provides informative messages during execution.</li>
     </ul>
-</div> <!-- End of gemini-explanation div -->
+</div> <!-- End of div -->
 
 <p>You can download the example Python script discussed above here: <a href="pdf_latex_translator.py" download>pdf_latex_translator.py</a>.</p>
 <!-- Make sure pdf_latex_translator.py is in the same directory as this HTML file, or adjust the href path -->
