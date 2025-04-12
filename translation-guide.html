@@ -4,7 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>How to Translate a Math PDF (Co-written with Gemini 2.5 Pro)</title>
-    <!-- Styles removed as requested -->
+    <style>
+        /* Basic styling for readability */
+        body { font-family: sans-serif; line-height: 1.6; margin: 2em; }
+        h1, h2, h3 { margin-top: 1.5em; }
+        pre { background-color: #f4f4f4; padding: 1em; border: 1px solid #ddd; overflow-x: auto; white-space: pre-wrap; /* Wrap long lines */ word-wrap: break-word; /* Break words if needed */ }
+        code { font-family: monospace; }
+        ul, ol { margin-left: 1.5em; }
+        li { margin-bottom: 0.5em; }
+        /* Style to visually separate Gemini's explanation */
+        .gemini-explanation { border-left: 4px solid #4285F4; /* Google blue */ padding-left: 1em; margin-top: 1.5em; }
+    </style>
 </head>
 <body>
 
@@ -47,15 +57,21 @@
 
 <p>I'll let Gemini explain in more detail:</p>
 
-<div> <!-- Removed the class="gemini-explanation" -->
+<div class="gemini-explanation"> <!-- Added class back for styling -->
     <h3>How to Use the Python Script</h3>
     <p>(Assuming you have downloaded the <code>pdf_latex_translator.py</code> script)</p>
 
-    <h4>1. Install Libraries:</h4>
+    <h4>1. Set Up Python Environment:</h4>
+    <p>Ensure you have Python installed on your system. If not, you can download it from the <a href="https://www.python.org/downloads/" target="_blank" rel="noopener noreferrer">official Python website</a> (this typically includes pip, the package installer).</p>
+
+
+    <h4>2. Install Libraries:</h4>
     <p>Open your terminal or command prompt and run:</p>
     <pre><code>pip install google-generativeai pypdf python-dotenv</code></pre>
+    <p><em>Note: Depending on your system configuration, you might need to use <code>pip3</code> instead of <code>pip</code>.</em></p>
 
-    <h4>2. Set up API Key:</h4>
+
+    <h4>3. Set up API Key:</h4>
     <ul>
         <li>Create a file named <code>.env</code> in the same directory as the script.</li>
         <li>Add your Gemini API key to the <code>.env</code> file like this:
@@ -65,15 +81,16 @@
         <li>Alternatively, you can set <code>GEMINI_API_KEY</code> as an environment variable directly in your operating system.</li>
     </ul>
 
-    <h4>3. Run the Script:</h4>
+    <h4>4. Run the Script:</h4>
     <p>Execute the script from your terminal:</p>
     <pre><code>python pdf_latex_translator.py "path/to/your/document.pdf" "path/to/output/translated_document.tex"</code></pre>
     <ul>
         <li>Replace <code>"path/to/your/document.pdf"</code> with the actual path to your input PDF file.</li>
         <li>Replace <code>"path/to/output/translated_document.tex"</code> with the desired path for the output LaTeX file.</li>
+        <li><em>Note: Depending on your system configuration, you might need to use <code>python3</code> instead of <code>python</code>.</em></li>
     </ul>
 
-    <h4>4. Optional Arguments:</h4>
+    <h4>5. Optional Arguments:</h4>
     <p>You can modify the script's behavior using command-line arguments:</p>
     <ul>
         <li><code>--env path/to/.env</code>: Specify a different path for the <code>.env</code> file if it's not in the same directory.</li>
@@ -106,7 +123,7 @@
         <li><strong>Command-Line Interface:</strong> Uses <code>argparse</code> for easy configuration via command-line arguments.</li>
         <li><strong>Logging:</strong> Provides informative messages during execution.</li>
     </ul>
-</div> <!-- End of div -->
+</div> <!-- End of gemini-explanation div -->
 
 <p>You can download the example Python script discussed above here: <a href="pdf_latex_translator.py" download>pdf_latex_translator.py</a>.</p>
 <!-- Make sure pdf_latex_translator.py is in the same directory as this HTML file, or adjust the href path -->
