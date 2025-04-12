@@ -125,14 +125,15 @@ In order the use this script, you first need to obtain a Gemini API key and set 
         <li><strong>API Key Loading:</strong> Securely loads the Gemini API key.</li>
         <li><strong>PDF Page Handling:</strong> Uses <code>pypdf</code> for page count and <code>pdf2image</code> (requires Poppler) for page-to-image conversion.</li>
         <li><strong>Page-by-Page Image Translation:</strong> Iterates through pages, sending each image to the specified Gemini vision model (defaulting to <code>gemini-2.5-pro-exp-03-25</code>) for LaTeX generation.</li>
-        <li><strong>Contextual Prompts:</strong> Uses previous output snippets to aid translation continuity.</li>
-        <li><strong>Chunk-Based Compilation Check:</strong> After processing a set number of pages (<code>--chunk_size</code>), the script writes the accumulated LaTeX and attempts compilation using <code>pdflatex</code> (requires LaTeX installed).</li>
+        <li><strong>Enhanced Contextual Prompts:</strong> To improve consistency, the script now includes the full LaTeX content generated for the **previous successfully compiled chunk** (typically 10 pages, controlled by <code>--chunk_size</code>) as reference context in the prompt for the current page's translation (limited by <code>--max_context</code> to avoid excessive input size). It instructs the AI to maintain consistency with this context but not repeat it.</li>
+        <li><strong>Chunk-Based Compilation Check:</strong> After processing a set number of pages (<code>--chunk_size</code>), the script writes the accumulated LaTeX and attempts compilation using <code>pdflatex</code> (requires LaTeX installed), saving the log.</li>
         <li><strong>Error Handling & Halting on Failure:</strong> Handles API, file, and image conversion errors. **Stops execution** if a LaTeX compilation fails, saving the faulty <code>.tex</code> file and log, guiding the user to fix errors and restart using <code>--start_page</code>.</li>
         <li><strong>Combining Output:</strong> Successfully compiled chunks are progressively added to the main output file.</li>
-        <li><strong>Simplified State/Resume:</strong> Uses <code>--start_page</code> for basic resume capability.</li>
-        <li><strong>Command-Line Interface:</strong> Uses <code>argparse</code> to handle required positional arguments (PDF input, TeX output) and optional flags.</li>
+        <li><strong>Simplified State/Resume:</strong> Uses <code>--start_page</code> for basic resume capability (note: context from before the resume point is not automatically loaded).</li>
+        <li><strong>Command-Line Interface:</strong> Uses <code>argparse</code> for required positional arguments (PDF input, TeX output) and optional flags (like <code>--chunk_size</code>, <code>--max_context</code>).</li>
         <li><strong>Logging:</strong> Provides progress updates and error messages.</li>
     </ul>
 </div> <!-- End of gemini-explanation div -->
+
 </body>
 </html>
