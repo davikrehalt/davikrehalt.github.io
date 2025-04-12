@@ -1,10 +1,9 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>How to Translate a Math PDF (Vibe-written with Gemini)</title>
+    <title>How to Translate a Math PDF (AI-Assisted)</title>
     <style>
         /* Basic styling for readability */
         body { font-family: sans-serif; line-height: 1.6; margin: 2em; max-width: 900px; margin-left: auto; margin-right: auto; }
@@ -25,16 +24,16 @@
 </head>
 <body>
 
-<h1>How to Translate a Math PDF (Vibe-written with Gemini)</h1>
+<h1>How to Translate a Math PDF (AI-Assisted)</h1>
 
-<p>Modern multimodal AI models can take a math paper in a non-English language (provided as a PDF) and output a translation directly in LaTeX. This guide explains how to use a Python script that leverages multiple AI providers (Anthropic Claude, OpenAI GPT, Google Gemini) sequentially to achieve this.</p>
+<p>Modern multimodal AI models can take a math paper in a non-English language (provided as a PDF) and output a translation directly in LaTeX. This guide explains how to use a Python script that leverages AI providers (Anthropic Claude, OpenAI GPT, Google Gemini) to achieve this.</p>
 
-<p><span class="warning">Disclaimer:</span> AI translations, especially for complex technical documents, carry risks of hallucination or error. This guide and the accompanying script were developed collaboratively with AI and reflect capabilities as of early 2025; they may require updates as APIs and models evolve. Always carefully review the generated LaTeX output. <span class="warning">Furthermore, be mindful of copyright restrictions when translating and distributing academic papers. Some AI models may refuse to process copyrighted material; if you encounter content refusals, you might try a different model, but ensure you have the necessary rights to translate and use the material.</span></p>
+<p><span class="warning">Disclaimer:</span> AI translations, especially for complex technical documents, carry risks of hallucination or error. This guide and the accompanying script reflect capabilities as of early 2025; they may require updates as APIs and models evolve. Always carefully review the generated LaTeX output. <span class="warning">Furthermore, be mindful of copyright restrictions when translating and distributing academic papers. Some AI models may refuse to process copyrighted material; if you encounter content refusals, you might try a different model, but ensure you have the necessary rights to translate and use the material.</span></p>
 
 <p>The core translation ability resides within the AI models themselves. This script provides scaffolding to overcome common challenges:</p>
 <ul>
     <li><strong>Output Length Limits:</strong> AIs often struggle to generate LaTeX for very long papers in a single API call.</li>
-    <li><strong>API Reliability/Failures:</strong> Individual API calls can fail. Using multiple models increases robustness.</li>
+    <li><strong>API Reliability/Failures:</strong> Individual API calls can fail. The script includes retries for robustness.</li>
     <li><strong>Consistency:</strong> Maintaining consistent LaTeX formatting and translation style across many pages can be difficult for AIs.</li>
     <li><strong>Compilation Errors:</strong> AI-generated LaTeX might contain errors that prevent compilation.</li>
 </ul>
@@ -52,35 +51,34 @@
     <li><strong>Process:</strong> Copy the AI's generated LaTeX, paste it into a LaTeX editor (e.g., Overleaf, VS Code with LaTeX Workshop), compile, and meticulously review the resulting PDF for correctness and formatting.</li>
 </ol>
 
-<h2>Situation 2: Translation for Longer Papers via the Multi-API Script</h2>
+<h2>Situation 2: Translation for Longer Papers via the AI-Powered Script</h2>
 
-<p>For longer papers, the provided Python script (`translator.py`) automates a page-by-page translation process using a sequence of different AI models.</p>
+<p>For longer papers, the provided Python script (`translator.py`) automates a page-by-page translation process using an AI model of your choice, with fallback mechanisms for pages that fail initial translation attempts.</p>
 
 <p>The script workflow:</p>
 <ol>
     <li>Reads processing state (if resuming).</li>
     <li>Iterates through PDF pages, converting each to an image.</li>
-    <li>For each page image, it attempts translation using the selected AI model: <!-- Updated description for single-model logic -->
+    <li>For each page image, it attempts translation using your selected AI model:
         <ul>
             <li>Sends the image and contextual information (like previous page content) to the specified model.</li>
-            <li>Includes retries if the initial attempts fail (due to API error or compilation error).</li> <!-- Updated description for single-model logic -->
+            <li>If the initial attempt fails (due to API error or compilation error), it will retry with the same model several times.</li>
+            <li>If a page fails all retry attempts, it inserts a placeholder into the LaTeX document and saves the original page image for manual review, then continues with the next page.</li>
         </ul>
     </li>
-    <li>If all retries for the selected model fail to produce compilable LaTeX for a page, it inserts a placeholder into the LaTeX document and saves the original page image for manual review.</li> <!-- Updated description for single-model logic -->
     <li>Appends the successful LaTeX (or placeholder) for the current page to the cumulative document.</li>
     <li>Saves the state and the last known good `.tex`/`.pdf` files after each successfully processed page.</li>
-    <li>If compilation fails even with a placeholder, it indicates a critical error (likely in the preamble or previous content) and stops processing.</li>
     <li>At the end, generates a report summarizing model performance and optionally merges it with the main PDF.</li>
 </ol>
 
-<p>We provide the <a href="translator.py" download>example Python script</a> which was vibe-coded with Gemini.
+<p>We provide the <a href="translator.py" download>example Python script</a>.
 <!-- Make sure translator.py is in the same directory -->
-To use this script, you need API keys for the AI providers you wish to use and a correctly configured Python environment.</p>
+To use this script, you need API keys for the AI provider you wish to use and a correctly configured Python environment.</p>
 
 <p>Here's a more detailed explanation:</p>
 
 <div class="ai-explanation"> <!-- Start of AI Explanation -->
-    <h3>How to Use the Single-Model Python Script (translator.py)</h3> <!-- Updated title -->
+    <h3>How to Use the Python Script (translator.py)</h3>
 
     <h4>1. Requirements:</h4>
     <ul class="requirements">
@@ -96,88 +94,97 @@ To use this script, you need API keys for the AI providers you wish to use and a
                 <li><code>OPENAI_API_KEY</code> (for GPT models)</li>
                 <li><code>GOOGLE_API_KEY</code> (for Gemini models)</li>
             </ul>
-             Get keys from their respective websites (Anthropic Console, OpenAI Platform, Google AI Studio). The script will fail if the key for the selected model's provider is not found. <!-- Updated -->
+             Get keys from their respective websites (Anthropic Console, OpenAI Platform, Google AI Studio). The script will fail if the key for the selected model's provider is not found.
         </li>
     </ul>
 
     <h4>2. Configuration (Optional):</h4>
     <ul>
-        <li><strong>Model Configs:</strong> Edit the `get_model_configs()` function within `translator.py` to add or update model details. Use `--list-models` to see current options.</li> <!-- Updated -->
-        <li><strong>Default Model:</strong> Change the `DEFAULT_MODEL_KEY` variable in the script if you prefer a different default than `claude-3.5-sonnet`.</li> <!-- Updated -->
+        <li><strong>Model Configs:</strong> Edit the `get_model_configs()` function within `translator.py` to add or update model details. Use `--list-models` to see current options.</li>
+        <li><strong>Default Model:</strong> Change the `DEFAULT_MODEL_KEY` variable in the script if you prefer a different default than `claude-3.5-sonnet`.</li>
         <li><strong>Working Directory:</strong> By default, outputs go to `latex_processing_multi`. Use the `--working-dir` flag to change this.</li>
     </ul>
 
 
     <h4>3. Running the Script:</h4>
     <p>Open your terminal/command prompt in the directory containing `translator.py`.</p>
-    <p><strong>Basic Command (using default model):</strong></p> <!-- Updated -->
+    <p><strong>Basic Command (using default model):</strong></p>
     <pre><code>python translator.py [path/to/your/input.pdf] [options...]</code></pre>
-    <p><strong>Command with Specific Model:</strong></p> <!-- Added -->
+    <p><strong>Command with Specific Model:</strong></p>
     <pre><code>python translator.py [path/to/your/input.pdf] --model MODEL_KEY [options...]</code></pre>
     <ul>
         <li>The <strong>Input PDF Path</strong> is the first (optional) argument. If omitted, it defaults to `input.pdf` in the script's directory.</li>
-        <li>The <code>--model</code> flag is recommended to specify the AI model you want to use.</li> <!-- Updated -->
+        <li>The <code>--model</code> flag specifies which AI model you want to use for translation.</li>
     </ul>
 
     <p><strong>Example Commands:</strong></p>
     <pre><code class="language-bash"># Translate my_paper.pdf using the default model (claude-3.5-sonnet)
 python translator.py my_paper.pdf
 
-# Translate input.pdf using gpt-4o
-python translator.py --model gpt-4o
+# Translate input.pdf using gemini-2.5-pro-preview
+python translator.py --model gemini-2.5-pro-preview
 
-# Translate paper_v2.pdf using gemini-1.5-pro and store outputs in a custom directory
-python translator.py paper_v2.pdf --model gemini-1.5-pro --working-dir /path/to/my/latex_output</code></pre>
+# Translate paper_v2.pdf using claude-3.7-sonnet and store outputs in a custom directory
+python translator.py paper_v2.pdf --model claude-3.7-sonnet --working-dir /path/to/my/latex_output</code></pre>
 
     <p class="note"><em>Use quotes around paths with spaces. You might need <code>python3</code> instead of <code>python</code>.</em></p>
 
     <h4>4. Command-Line Options (Flags):</h4>
     <ul>
         <li><code>input_pdf</code> (Positional, Optional): Path to the input PDF (defaults to `input.pdf`).</li>
-        <li><code>--model MODEL_KEY</code> or <code>-m MODEL_KEY</code>: Specify the model key (e.g., `claude-3.5-sonnet`, `gpt-4o`) to use for translation. Use <code>--list-models</code> to see available keys. If omitted, uses the `DEFAULT_MODEL_KEY` set in the script.</li> <!-- Updated -->
+        <li><code>--model MODEL_KEY</code> or <code>-m MODEL_KEY</code>: Specify the model key (e.g., `claude-3.7-sonnet`, `gpt-4o`, `gemini-2.5-pro-preview`) to use for translation. Use <code>--list-models</code> to see available keys. If omitted, uses the `DEFAULT_MODEL_KEY` set in the script.</li>
         <li><code>--working-dir PATH</code> or <code>-w PATH</code>: Set the directory for all outputs (logs, state, .tex, .pdf, failed pages). Defaults to `./latex_processing_multi`.</li>
-        <li><code>--list-models</code> or <code>-l</code>: Display available model keys configured in the script, then exit.</li> <!-- Updated -->
+        <li><code>--list-models</code> or <code>-l</code>: Display available model keys configured in the script, then exit.</li>
     </ul>
 
-    <h4>5. Output Files (in Working Directory):</h4>
+    <h4>5. Available Models:</h4>
+    <p>The script supports multiple AI models, including:</p>
+    <ul>
+        <li><strong>Claude Models:</strong> claude-3-opus, claude-3.7-sonnet, claude-3.5-sonnet, claude-3-sonnet, claude-3.5-haiku, claude-3-haiku</li>
+        <li><strong>Gemini Models:</strong> gemini-2.5-pro-preview, gemini-1.5-pro, gemini-2.0-flash, gemini-1.5-flash, gemini-2.0-flash-lite, gemini-1.5-flash-8b, gemini-2.0-flash-live, <strong>gemini-2.5-pro-exp-03-25</strong></li>
+        <li><strong>OpenAI Models:</strong> gpt-4o, gpt-4o-mini, o3-mini</li>
+    </ul>
+    <p>Use <code>--list-models</code> to see the complete, up-to-date list of model keys available in your version of the script.</p>
+
+    <h4>6. Output Files (in Working Directory):</h4>
     <ul>
         <li><code>cumulative_good.tex</code>: The latest successfully compiled LaTeX source.</li>
         <li><code>cumulative_good.pdf</code>: The PDF generated from `cumulative_good.tex`.</li>
         <li><code>processing.log</code>: Detailed log of the translation process.</li>
         <li><code>state.json</code>: Stores the last completed page for resuming.</li>
-        <li><code>model_stats.json</code>: Tracks successful translations and failures for the used model.</li> <!-- Updated -->
+        <li><code>model_stats.json</code>: Tracks successful translations and failures for the used model.</li>
         <li><code>latex_aux/</code>: Directory containing auxiliary files from LaTeX compilation (`.log`, `.aux`, etc.).</li>
-        <li><code>failed_pages/</code>: Contains images (`.jpg`) of pages that failed all translation attempts with the selected model.</li> <!-- Updated -->
+        <li><code>failed_pages/</code>: Contains images (`.jpg`) of pages that failed all translation attempts with the selected model.</li>
         <li><code>*.log</code> (e.g., `compile_fail_*.log`, `report_compile.log`, `compile_fatal_placeholder*.log`): Specific logs for compilation failures.</li>
         <li><code>*final.pdf</code> / <code>*final_with_report.pdf</code>: The final output PDF, potentially merged with reports/appendices.</li>
     </ul>
 
-    <h4>6. Resuming and Error Handling:</h4>
+    <h4>7. Resuming and Error Handling:</h4>
     <ul>
-        <li><strong>Resuming:</strong> Simply run the script again with the same input PDF, the same `--model` (or default), and working directory. It will read `state.json` and continue from the last successfully completed page.</li> <!-- Updated -->
+        <li><strong>Resuming:</strong> Simply run the script again with the same input PDF, the same `--model` (or default), and working directory. It will read `state.json` and continue from the last successfully completed page.</li>
         <li><strong>Failures:</strong>
             <ul>
-                <li>If the selected model's output causes a compilation error, the script logs it and retries the *same model* up to `MAX_RETRIES_PER_MODEL` times.</li> <!-- Updated -->
-                <li>If a page fails all retry attempts (API or compile errors), its image is saved in `failed_pages/`, a placeholder is inserted in the LaTeX, and processing continues (if the placeholder compiles).</li> <!-- Updated -->
-                <li>If the generated LaTeX fails to compile *even with a placeholder inserted*, it indicates a critical issue (likely in the preamble or previous content). Processing stops, and logs (`compile_fail*.log`, `compile_fatal_placeholder*.log`) should be checked.</li>
-                <li>Fix errors in `cumulative_good.tex` manually, then rerun the script to resume from the corrected state.</li>
+                <li>If the selected model's output causes a compilation error, the script logs it and retries the same model up to `MAX_RETRIES_PER_MODEL` times.</li>
+                <li>If a page fails all retry attempts (API or compile errors), its image is saved in `failed_pages/`, a placeholder is inserted in the LaTeX, and processing continues to the next page.</li>
+                <li>Fix page translation errors by manually editing `cumulative_good.tex` after the script completes.</li>
             </ul>
         </li>
     </ul>
 
 
-    <h3>Key Features of the Single-Model Script</h3> <!-- Updated -->
+    <h3>Key Features of the Script</h3>
     <ul>
-        <li><strong>Single-Model Focused:</strong> Uses one specified AI model (Claude, GPT, or Gemini) for consistency and cost control.</li> <!-- Updated -->
-        <li><strong>Retry Mechanism:</strong> Retries API calls or recompiles if the selected model fails initially.</li> <!-- Updated -->
-        <li><strong>Configurable Model Choice:</strong> Allows specifying the desired translation model via command line or setting a default.</li> <!-- Updated -->
+        <li><strong>Focused Translation Model:</strong> Uses a single specified AI model (Claude, GPT, or Gemini) for consistency and cost control.</li>
+        <li><strong>Robust Retry Mechanism:</strong> Retries API calls and compilation if the selected model fails initially.</li>
+        <li><strong>Smart Fallback:</strong> When a page consistently fails, the script inserts a placeholder and continues with the next page rather than stopping completely.</li>
+        <li><strong>Configurable Model Choice:</strong> Allows specifying the desired translation model via command line or setting a default.</li>
         <li><strong>Page-by-Page Processing:</strong> Handles long documents by processing one page at a time.</li>
         <li><strong>Image-Based Translation:</strong> Converts PDF pages to images for multimodal AI input.</li>
         <li><strong>Contextual Prompting:</strong> Provides the model with context from the previous page's LaTeX output to improve consistency.</li>
-        <li><strong>Inline Compilation Checks:</strong> Attempts `pdflatex` compilation after each successful API response to catch LaTeX errors early and trigger retries.</li> <!-- Updated -->
-        <li><strong>Graceful Failure Handling:</strong> Retries the same model if it produces invalid LaTeX. Inserts placeholders only if all retries fail for a page. Saves images of failed pages.</li> <!-- Updated -->
+        <li><strong>Inline Compilation Checks:</strong> Attempts `pdflatex` compilation after each successful API response to catch LaTeX errors early.</li>
+        <li><strong>Graceful Failure Handling:</strong> Retries the selected model if it produces invalid LaTeX. Inserts placeholders only if all retries fail for a page.</li>
         <li><strong>State Management:</strong> Automatically saves and resumes progress using `state.json`.</li>
-        <li><strong>Performance Reporting:</strong> Generates statistics (`model_stats.json`) and a final PDF report summarizing performance.</li> <!-- Updated -->
+        <li><strong>Performance Reporting:</strong> Generates statistics and a final PDF report summarizing performance.</li>
         <li><strong>Command-Line Interface:</strong> Flexible control via CLI arguments.</li>
         <li><strong>Detailed Logging:</strong> Records progress and errors to `processing.log`.</li>
     </ul>
