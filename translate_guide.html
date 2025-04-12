@@ -1,0 +1,66 @@
+<!-- Suggested Title for your HTML page -->
+<h1>How to Translate Math PDFs into LaTeX using AI</h1>
+
+<p>Nowadays, my preferred method for reading non-English math papers is to feed them into a multimodal AI model and ask for a translation directly into LaTeX format. I find current AI translation sufficient for most reading, rarely using originals now. The speed and readability benefits, for me, often outweigh the risks of AI hallucination or error, though you must always weigh this trade-off yourself. Here I record one (probably far from optimal) way of doing this with Gemini.</p>
+
+<p>The core capability to understand PDF layout and translate content (including math) into LaTeX lies within the multimodal AI itself. The main practical challenges usually involve API limitations or AI errors:</p>
+<ul>
+    <li><strong>Output Length Limits:</strong> AIs often can't generate the entire LaTeX for a long paper in one go via API calls or even in chat interfaces.</li>
+    <li><strong>AI Errors/Confusion:</strong> Complex layouts or dense math can sometimes lead to errors in the generated LaTeX.</li>
+</ul>
+
+<h2>Situation 1 (Easiest): Translating Short Papers (e.g., < 20 pages)</h2>
+
+<p>If the paper is short, you can often translate it manually in one go using an interface like Google's AI Studio.</p>
+<ol>
+    <li><strong>Method:</strong> Upload the PDF.</li>
+    <li><strong>Prompt:</strong> Use a prompt like:
+        <pre><code>Please translate the uploaded document into English LaTeX code. Ensure all mathematical formulas and environments are preserved correctly. Generate the complete LaTeX document, including a suitable preamble.</code></pre>
+    </li>
+    <li><strong>Process:</strong> Copy the AI's generated LaTeX output, paste it into your editor (e.g., Overleaf), compile, and review.</li>
+</ol>
+
+<h2>Situation 2: Automating Translation for Longer Papers via API</h2>
+
+<p>For longer papers, manually prompting for chunks is tedious. A more robust approach uses the AI's API (e.g., the Gemini API) via a script to automate the process.</p>
+
+<p>The basic idea is to have a script that:</p>
+<ol>
+    <li>Determines how to split the PDF into logical chunks (either by asking the AI or using fixed page counts).</li>
+    <li>Extracts text from each chunk.</li>
+    <li>Calls the AI API to translate each text chunk into LaTeX format.</li>
+    <li>Combines the resulting LaTeX pieces into a single, final <code>.tex</code> file.</li>
+</ol>
+
+<p>You can generate the Python code for such a script by providing a detailed prompt to an AI coding assistant like Gemini. Here’s a sample prompt you could use:</p>
+
+<pre><code># Prompt to Generate PDF-to-LaTeX Translation Script
+
+Create a Python script that translates a large PDF document into a single LaTeX (.tex) file using the Google Gemini API.
+
+Requirements:
+1.  **Input:** Takes the path to the input PDF file.
+2.  **API Key:** Uses the Gemini API key (ideally loaded securely, e.g., from environment variables using `python-dotenv`).
+3.  **Libraries:** Requires `google-generativeai` for the API interaction and `pypdf` for handling the PDF.
+4.  **Chunking Strategy:**
+    *   Implement a function to determine page ranges for splitting the PDF.
+    *   (Optional but preferred): Include logic to *attempt* asking the Gemini API for optimal page ranges based on PDF structure (e.g., by sending total pages and maybe text from the first few pages/ToC).
+    *   Provide a fallback to using fixed-size page chunks (e.g., 10 pages) if the AI chunking suggestion fails or is not implemented.
+5.  **Chunk Processing Loop:**
+    *   Iterate through the determined page ranges.
+    *   For each range, extract the text content from those specific pages using `pypdf`.
+    *   Call the Gemini API to translate the extracted text chunk into English LaTeX code.
+    *   The prompt for translation should instruct the AI to preserve all math formulas and environments correctly.
+    *   Crucially, the prompt should only ask for the LaTeX preamble (`\documentclass`, etc.) and `\begin{document}` for the *first* chunk. Subsequent chunks should be translated without these elements.
+6.  **Combining Output:**
+    *   Concatenate the LaTeX code returned for each chunk into a single string.
+    *   Ensure `\end{document}` is added at the very end.
+7.  **Output:** Write the final combined LaTeX string to a specified output `.tex` file.
+8.  **Error Handling:** Include basic error handling for file operations and API calls.
+9.  **Clarity:** Use functions, comments, and type hints where appropriate.
+</code></pre>
+
+<p>Running this prompt in Gemini (or a similar AI) should give you a functional Python script. You may need to refine the script or the prompt based on the results.</p>
+
+<p><strong>Downloadable Script Example:</strong></p>
+<p>For convenience, you can download a sample Python script generated using a similar prompt here: <a href="pdf_latex_translator.py" download>pdf_latex_translator.py</a> <em>(You'll need to create this file and add this link)</em>.</p>
