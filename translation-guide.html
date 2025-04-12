@@ -58,24 +58,34 @@
 In order the use this script, you first need to obtain a Gemini API key and set up a Python environment with the necessary libraries installed. </p>
 
 <p>I'll let Gemini explain in more detail:</p>
-
-<div class="gemini-explanation"> <!-- Added class back for styling -->
+      
+<div class="gemini-explanation"> <!-- Start of Gemini's Explanation -->
     <h3>How to Use the Python Script</h3>
-    <p>(Assuming you have downloaded the <code>pdf_latex_translator.py</code> script)</p>
+    <p>(Assuming you have downloaded the image-based translator script, let's call it <code>pdf_latex_translator_vision.py</code>)</p>
 
     <h4>1. Requirements:</h4>
     <ul>
-        <li><strong>Python Environment:</strong> A working Python installation (version 3.x recommended). It's best practice to use a virtual environment (like `venv`).</li>
-        <li><strong>Required Python Packages:</strong> Install these using pip (or pip3):
-            <pre><code>pip install google-generativeai pypdf python-dotenv</code></pre>
+        <li><strong>Python Environment:</strong> A working Python installation (version 3.x recommended). Using a virtual environment (like `venv`) is highly recommended.</li>
+        <li>
+            <strong>Required Python Packages:</strong> Install these using pip (or pip3):
+            <pre><code>pip install google-generativeai pdf2image Pillow pypdf python-dotenv</code></pre>
+        </li>
+        <li>
+            <strong>External Dependency: Poppler:</strong> The `pdf2image` library requires the Poppler PDF rendering library. You must install it separately:
+            <ul>
+                <li><strong>macOS (using Homebrew):</strong> <code>brew install poppler</code></li>
+                <li><strong>Debian/Ubuntu Linux:</strong> <code>sudo apt-get update && sudo apt-get install poppler-utils</code></li>
+                <li><strong>Windows:</strong> Download pre-built binaries (e.g., from <a href="https://github.com/oschwartz10612/poppler-windows/releases/" target="_blank" rel="noopener noreferrer">poppler-windows releases</a> or via conda/MSYS2) and ensure the `bin` directory containing `pdftoppm.exe`, `pdfinfo.exe` etc. is added to your system's PATH environment variable.</li>
+            </ul>
+            <em>Failure to install Poppler correctly is a common reason for errors.</em>
         </li>
         <li><strong>LaTeX Distribution:</strong> You need a way to compile the final <code>.tex</code> file (e.g., TeX Live, MiKTeX installed locally, or an online editor like Overleaf).</li>
-        <li><strong>Gemini API Key:</strong> Obtain an API key from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer">Google AI Studio</a>. You'll need to save this key, for example in a <code>.env</code> file in the same directory as the script (format: <code>GEMINI_API_KEY=YOUR_API_KEY_HERE</code>) or as a system environment variable.</li>
+        <li><strong>Gemini API Key:</strong> Obtain an API key from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer">Google AI Studio</a>. Save this key securely, for example in a <code>.env</code> file in the same directory as the script (format: <code>GEMINI_API_KEY=YOUR_API_KEY_HERE</code>) or as a system environment variable (<code>GEMINI_API_KEY</code> or <code>GOOGLE_API_KEY</code>).</li>
     </ul>
 
     <h4>2. Run the Script:</h4>
     <p>Execute the script from your terminal, providing the input PDF path and desired output TeX file path:</p>
-    <pre><code>python pdf_latex_translator.py "path/to/your/document.pdf" "path/to/output/translated_document.tex"</code></pre>
+    <pre><code>python pdf_latex_translator_vision.py "path/to/your/document.pdf" "path/to/output/translated_document.tex"</code></pre>
     <ul>
         <li>Replace the placeholder paths with your actual file paths.</li>
         <li><em>Note: Depending on your system configuration, you might need to use <code>python3</code> instead of <code>python</code>.</em></li>
@@ -85,27 +95,28 @@ In order the use this script, you first need to obtain a Gemini API key and set 
     <p>Customize the script's execution with these flags:</p>
     <ul>
         <li><code>--env path/to/.env</code>: Specify a different path for your <code>.env</code> file containing the API key.</li>
-        <li><code>--chunk_size N</code>: Set pages per chunk (default: 10) if AI chunking fails or is disabled.</li>
-        <li><code>--disable_ai_chunking</code>: Use fixed-size chunks only.</li>
-        <li><code>--model model_name</code>: Specify a Gemini model (e.g., <code>gemini-1.5-flash</code>, <code>gemini-2.5-pro-exp-03-25</code>). Check Google's documentation for current models and pricing/free tier details.</li>
+        <li>
+            <code>--model model_name</code>: Specify a Gemini vision model. The script now defaults to <code>gemini-2.5-pro-exp-03-25</code>, considered the best performing free experimental model as of April 2025 (note: free experimental models may have stricter usage limits and could change or be removed). If you encounter rate limits or require more stability/higher throughput, consider using the paid <code>gemini-2.5-pro-preview-03-25</code> model. Always check Google's documentation for current model availability, capabilities, rate limits, and pricing.
+        </li>
+        <li><code>--start_page N</code>: Start processing from page number N (1-based). Useful for resuming after an interruption. The script will attempt to load existing content from the output file if starting from page > 1.</li>
     </ul>
 
     <h3>Explanation and Key Features of the Script</h3>
     <p>(This section outlines the script's internal logic. Refer to the script's comments for full details.)</p>
     <ul>
-        <li><strong>API Key Loading:</strong> Securely loads the API key.</li>
-        <li><strong>PDF Handling:</strong> Uses <code>pypdf</code> for page reading and text extraction.</li>
-        <li><strong>Chunking Strategy:</strong> Attempts AI-driven chunking, falls back to fixed chunks.</li>
-        <li><strong>Gemini Translation:</strong> Constructs specific prompts for first vs. subsequent chunks to handle LaTeX preamble correctly. Preserves math.</li>
-        <li><strong>Combining Output:</strong> Joins parts, ensures correct document structure.</li>
-        <li><strong>Error Handling:</strong> Includes checks for file, PDF, and API issues.</li>
-        <li><strong>Command-Line Interface:</strong> Uses <code>argparse</code> for flexibility.</li>
-        <li><strong>Logging:</strong> Provides progress updates.</li>
+        <li><strong>API Key Loading:</strong> Securely loads the Gemini API key.</li>
+        <li><strong>PDF Page Handling:</strong> Uses <code>pypdf</code> to get the page count and <code>pdf2image</code> (requiring Poppler) to convert each PDF page into an image.</li>
+        <li><strong>Page-by-Page Image Processing:</strong> Iterates through the document one page at a time, converting each to an image format suitable for the API.</li>
+        <li><strong>Gemini Vision Translation:</strong> Sends each page's <strong>image data</strong> along with a carefully crafted text prompt to the specified Gemini vision model (defaulting to <code>gemini-2.5-pro-exp-03-25</code>). The prompt instructs the AI to translate text, accurately preserve math/formulas from the image, maintain structure, and handle the LaTeX preamble only on the first page processed.</li>
+        <li><strong>Contextual Prompts:</strong> Includes a snippet of the previously generated LaTeX in prompts for subsequent pages to help the AI maintain continuity.</li>
+        <li><strong>Combining Output:</strong> Concatenates the LaTeX code returned for each page image into a single string, adding <code>\end{document}</code> only at the very end.</li>
+        <li><strong>Error Handling & Retries:</strong> Includes checks for file access, PDF reading, critical image conversion errors (often Poppler-related), and API call failures (with basic retries). Inserts error comments into the output file for failed pages.</li>
+        <li><strong>Simplified State/Resume:</strong> Uses the <code>--start_page</code> argument and checks for the existence of the output file to provide basic resume capability (less robust than a dedicated state file).</li>
+        <li><strong>Command-Line Interface:</strong> Uses <code>argparse</code> for flexibility in specifying files and options.</li>
+        <li><strong>Logging:</strong> Provides progress updates and error messages during execution.</li>
     </ul>
 </div> <!-- End of gemini-explanation div -->
 
-<p>You can download the example Python script discussed above here: <a href="pdf_latex_translator.py" download>pdf_latex_translator.py</a>.</p>
-<!-- Make sure pdf_latex_translator.py is in the same directory as this HTML file, or adjust the href path -->
-
+    
 </body>
 </html>
