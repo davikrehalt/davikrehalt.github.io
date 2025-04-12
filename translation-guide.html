@@ -3,20 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>How to Translate a Math PDF (AI-Assisted)</title>
+    <title>How to Translate a Math PDF (Co-written with Gemini 2.5 Pro)</title>
     <style>
         /* Basic styling for readability */
-        body { font-family: sans-serif; line-height: 1.6; margin: 2em; max-width: 900px; margin-left: auto; margin-right: auto; }
-        h1, h2, h3, h4 { margin-top: 1.5em; color: #333; }
-        h1 { border-bottom: 2px solid #eee; padding-bottom: 0.3em;}
-        pre { background-color: #f8f8f8; padding: 1em; border: 1px solid #ddd; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; font-size: 0.9em; border-radius: 4px; }
-        code { font-family: monospace; background-color: #f0f0f0; padding: 0.2em 0.4em; border-radius: 3px;}
+        body { font-family: sans-serif; line-height: 1.6; margin: 2em; max-width: 900px; margin-left: auto; margin-right: auto; } /* Added max-width and centering */
+        h1, h2, h3, h4 { margin-top: 1.5em; color: #333; } /* Added h4 and color */
+        h1 { border-bottom: 2px solid #eee; padding-bottom: 0.3em;} /* Added heading style */
+        pre { background-color: #f8f8f8; padding: 1em; border: 1px solid #ddd; overflow-x: auto; white-space: pre-wrap; /* Wrap long lines */ word-wrap: break-word; /* Break words if needed */ font-size: 0.9em; border-radius: 4px; } /* Nicer pre style */
+        code { font-family: monospace; background-color: #f0f0f0; padding: 0.2em 0.4em; border-radius: 3px;} /* Nicer code style */
         ul, ol { margin-left: 1.5em; }
         li { margin-bottom: 0.5em; }
-        a { color: #007bff; text-decoration: none; }
+        a { color: #007bff; text-decoration: none; } /* Link styling */
         a:hover { text-decoration: underline; }
-        /* Style to visually separate AI's explanation */
-        .ai-explanation { border-left: 4px solid #4285F4; /* Google blue */ padding-left: 1em; margin-top: 1.5em; margin-bottom: 1.5em; background-color: #f9f9f9; border-radius: 4px; padding: 1em; }
+        /* Style to visually separate Gemini's explanation */
+        .gemini-explanation { border-left: 4px solid #4285F4; /* Google blue */ padding-left: 1em; margin-top: 1.5em; margin-bottom: 1.5em; background-color: #f9f9f9; border-radius: 4px; padding: 1em; } /* Enhanced styling */
         .requirements ul li strong { display: inline-block; min-width: 150px; } /* Align requirement titles */
         .warning { color: #dc3545; font-weight: bold; }
         .note { font-style: italic; color: #555; }
@@ -24,65 +24,50 @@
 </head>
 <body>
 
-<h1>How to Translate a Math PDF (AI-Assisted)</h1>
+<h1>How to Translate a Math PDF (Co-written with Gemini 2.5 Pro)</h1>
 
-<p>Modern multimodal AI models can take a math paper in a non-English language (provided as a PDF) and output a translation directly in LaTeX. This guide explains how to use a Python script that leverages multiple AI providers (Anthropic Claude, OpenAI GPT, Google Gemini) in a robust "tournament" system to achieve this.</p>
+<p>Nowadays, multimodal AI models can take as input a math paper in a non-English language and output a translation directly in LaTeX. Below is a guide on this. Before proceeding, beware that there are always risks of hallucination or error from the AI and from the fact that this guide was written in April 2025 and was suboptimal even when written.</p>
 
-<p><span class="warning">Disclaimer:</span> AI translations, especially for complex technical documents, carry risks of hallucination or error. This guide and the accompanying script reflect capabilities as of mid-2024; they may require updates as APIs and models evolve. Always carefully review the generated LaTeX output. <span class="warning">Furthermore, be mindful of copyright restrictions when translating and distributing academic papers. Some AI models may refuse to process copyrighted material; this script tries multiple models, which might help if one refuses, but ensure you have the necessary rights to translate and use the material.</span></p>
-
-<p>The core translation ability resides within the AI models themselves. This script provides scaffolding to overcome common challenges:</p>
+<p>A quick note: for this to work, the core capability for this task has to exist in the multimodal AI itself. The guide below merely provides scaffolding to overcome the following two common challenges:</p>
 <ul>
-    <li><strong>Output Length Limits:</strong> AIs often struggle to generate LaTeX for very long papers in a single API call (handled by page-by-page processing).</li>
-    <li><strong>API Reliability/Failures:</strong> Individual API calls can fail. The script tries a queue of different models and retries them for robustness.</li>
-    <li><strong>Model-Specific Weaknesses:</strong> Some models might be better at certain content types. Trying multiple models increases the chance of success.</li>
-    <li><strong>Consistency:</strong> Maintaining consistent LaTeX formatting and translation style across many pages can be difficult (context from previous pages helps).</li>
-    <li><strong>Compilation Errors:</strong> AI-generated LaTeX might contain errors. The script performs compilation checks after each page.</li>
+    <li><strong>Output Length Limits:</strong> AIs often can't generate the entire LaTeX for a long paper in one output, especially via API calls.</li>
+    <li><strong>AI Confusion from Input Size:</strong> Processing hundreds of pages of math can sometimes lead to a degradation in translation ability or increased errors.</li>
 </ul>
 
 <p>We divide this guide into two main situations.</p>
 
 <h2>Situation 1 (Easiest): Translating Short Papers (e.g., < 20 pages)</h2>
 
-<p>For short papers, direct translation via a chat interface of a capable multimodal AI (like Google AI Studio, Anthropic's Console, or OpenAI's ChatGPT with vision) is often sufficient.</p>
+<p>If the paper is short, you can often translate it directly using a chat interface for any capable multimodal AI model (like Google's AI Studio for Gemini).</p>
 <ol>
     <li><strong>Method:</strong> Upload the PDF directly into the chat interface.</li>
-    <li><strong>Prompt:</strong> Use a detailed prompt like:
-        <pre><code>Please translate the uploaded non-English math document into English LaTeX code. Preserve all mathematical formulas, equations, and environments accurately using standard LaTeX (amsmath, amssymb, etc.). Generate a complete LaTeX document, including a suitable preamble (documentclass, common packages like graphicx, amsthm, hyperref), metadata (title, author if visible), and the translated content.</code></pre>
+    <li><strong>Prompt:</strong> Use a prompt like this:
+        <pre><code>Please translate the uploaded document into English LaTeX code. Ensure all mathematical formulas and environments are preserved correctly. Generate the complete LaTeX document, including a suitable preamble.</code></pre>
     </li>
-    <li><strong>Process:</strong> Copy the AI's generated LaTeX, paste it into a LaTeX editor (e.g., Overleaf, VS Code with LaTeX Workshop), compile, and meticulously review the resulting PDF for correctness and formatting.</li>
+    <li><strong>Process:</strong> Copy the AI's generated LaTeX output, paste it into your LaTeX editor (e.g., Overleaf), compile, and carefully review the resulting PDF.</li>
 </ol>
 
-<h2>Situation 2: Translation for Longer Papers via the Multi-Model AI Script</h2>
+<h2>Situation 2: Translation for Longer Papers via an API</h2>
 
-<p>For longer papers, the provided Python script (`translator.py`) automates a page-by-page translation process using a queue of AI models (Claude, Gemini, GPT), with fallback mechanisms for pages that fail translation attempts across all available models.</p>
+<p>For longer papers, we must divide the paper into manageable chunks for translation. Using the Gemini API, it is possible to write code to automate this process. The philosophy here is that the scaffolding imposed on the AI model should be minimal, so as not to interfere with the AI's own ability to process and translate effectively.</p>
 
-<p>The script workflow:</p>
+<p>The basic script workflow involves these steps:</p>
 <ol>
-    <li>Reads processing state (if resuming).</li>
-    <li>Iterates through PDF pages, converting each to an image.</li>
-    <li>For each page image, it attempts translation using a **tournament of models**:
-        <ul>
-            <li>Starts with the preferred model (or the first in the default queue).</li>
-            <li>If a model fails (API error, blocked response, bad output), it tries the *next* model in the queue.</li>
-            <li>Each model is retried a few times (`MAX_RETRIES_PER_MODEL`) within its turn.</li>
-            <li>If the entire queue is exhausted, it cycles through the queue again up to `MAX_MODEL_CYCLES` times.</li>
-            <li>If a model successfully returns LaTeX, the script attempts to compile the document up to that page.</li>
-            <li>If compilation fails *after* a successful translation, or if *all models fail* after all cycles/retries, it inserts a placeholder into the LaTeX document, saves the original page image to `failed_pages/` for manual review, and then continues with the next page.</li>
-        </ul>
-    </li>
-    <li>Appends the successful LaTeX (or placeholder) for the current page to the cumulative document.</li>
-    <li>Saves the state (`state.json`), model usage stats (`model_stats.json`), and the last known good `.tex`/`.pdf` files after each successfully processed page (or page with a placeholder).</li>
-    <li>At the end, generates a LaTeX report summarizing model performance and failures, compiles it, and merges it with the main translated PDF.</li>
+    <li>Determine how to split the PDF into chunks (e.g., based on logical sections suggested by the AI, or simply using fixed page counts).</li>
+    <li>Call the Gemini API for each chunk, sending the relevant pages (potentially as images or extracted text, depending on the chosen API capabilities and complexity) for translation into LaTeX format.</li>
+    <li>Combine the resulting LaTeX pieces generated for each chunk into a single, final <code>.tex</code> file.</li>
 </ol>
 
-<p>We provide the <a href="translator.py" download>example Python script</a>.
-<!-- Make sure translator.py is in the same directory -->
-To use this script, you need API keys for the AI providers you wish to use and a correctly configured Python environment.</p>
+<!-- User's corrected paragraph -->
+<p>We provide an example script written with Gemini:<a href="translator.py" download>translator.py</a>.
+<!-- Make sure translator.py is in the same directory as this HTML file, or adjust the href path -->
+In order the use this script, you first need to obtain a Gemini API key and set up a Python environment with the necessary libraries installed. </p>
 
-<p>Here's a more detailed explanation:</p>
+<p>I'll let Gemini explain in more detail:</p>
 
-<div class="ai-explanation"> <!-- Start of AI Explanation -->
-    <h3>How to Use the Python Script (translator.py)</h3>
+<div class="gemini-explanation"> <!-- Start of Gemini Explanation -->
+    <h3>How to Use the Multi-Model Python Script (translator.py)</h3>
+    <p>(This script uses a tournament of models including Claude, Gemini, and GPT)</p>
 
     <h4>1. Requirements:</h4>
     <ul class="requirements">
@@ -197,7 +182,7 @@ python translator.py paper_v2.pdf --model gpt-4o</code></pre>
         <li><strong>Command-Line Interface:</strong> Flexible control via CLI arguments.</li>
         <li><strong>Detailed Logging:</strong> Records progress, model attempts, and errors to `processing.log`.</li>
     </ul>
-</div> <!-- End of ai-explanation div -->
+</div> <!-- End of Gemini Explanation -->
 
 </body>
 </html>
