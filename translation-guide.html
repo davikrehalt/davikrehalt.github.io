@@ -64,15 +64,14 @@
     <li>For each page image, it attempts translation using multiple models:
         <ul>
             <li>Sends the image and contextual information (like previous page content) to models from different providers (Claude, GPT, Gemini) based on a defined sequence (queue order).</li>
-            <li>Uses the LaTeX output from the first model in the sequence that successfully responds.</li>
-            <li>Includes retries and cycles through the model sequence if initial attempts fail.</li>
+            <li>Uses the LaTeX output from the first model in the sequence that successfully responds and produces compilable code.</li> <!-- Updated description -->
+            <li>Includes retries and cycles through the model sequence if initial attempts fail (due to API error or compilation error).</li> <!-- Updated description -->
         </ul>
     </li>
-    <li>If all models fail for a page, it inserts a placeholder into the LaTeX document and saves the original page image for manual review.</li>
+    <li>If all models fail to produce compilable LaTeX for a page, it inserts a placeholder into the LaTeX document and saves the original page image for manual review.</li>
     <li>Appends the successful LaTeX (or placeholder) for the current page to the cumulative document.</li>
-    <li>Attempts to compile the cumulative LaTeX document using `pdflatex` after each page.</li>
-    <li>If compilation succeeds, saves the state and the `.tex`/`.pdf` files.</li>
-    <li>If compilation fails (even with a placeholder), it indicates a critical error and stops processing.</li>
+    <li>Saves the state and the last known good `.tex`/`.pdf` files after each successfully processed page.</li> <!-- Updated description -->
+    <li>If compilation fails even with a placeholder, it indicates a critical error (likely in the preamble or previous content) and stops processing.</li>
     <li>At the end, generates a report summarizing model performance and optionally merges it with the main PDF.</li>
 </ol>
 
@@ -145,10 +144,10 @@ python translator.py paper_v2.pdf --working-dir /path/to/my/latex_output</code><
         <li><code>cumulative_good.pdf</code>: The PDF generated from `cumulative_good.tex`.</li>
         <li><code>processing.log</code>: Detailed log of the translation process.</li>
         <li><code>state.json</code>: Stores the last completed page for resuming.</li>
-        <li><code>model_stats.json</code>: Tracks which models successfully translated which pages and records failures.</li>
+        <li><code>model_stats.json</code>: Tracks which models successfully translated which pages and records failures (including compilation failures).</li> <!-- Updated -->
         <li><code>latex_aux/</code>: Directory containing auxiliary files from LaTeX compilation (`.log`, `.aux`, etc.).</li>
         <li><code>failed_pages/</code>: Contains images (`.jpg`) of pages that failed all translation attempts.</li>
-        <li><code>*.log</code> (e.g., `compile_fail_*.log`, `report_compile.log`): Specific logs for compilation failures.</li>
+        <li><code>*.log</code> (e.g., `compile_fail_*.log`, `report_compile.log`, `compile_fatal_placeholder*.log`): Specific logs for compilation failures.</li> <!-- Updated -->
         <li><code>*final.pdf</code> / <code>*final_with_report.pdf</code>: The final output PDF, potentially merged with reports/appendices.</li>
     </ul>
 
@@ -157,8 +156,9 @@ python translator.py paper_v2.pdf --working-dir /path/to/my/latex_output</code><
         <li><strong>Resuming:</strong> Simply run the script again with the same input PDF and working directory. It will read `state.json` and continue from the last successfully completed page.</li>
         <li><strong>Failures:</strong>
             <ul>
-                <li>If a page fails all model translation attempts, its image is saved in `failed_pages/`, a placeholder is inserted in the LaTeX, and processing continues.</li>
-                <li>If the generated LaTeX (even with placeholders) fails to compile, it usually indicates a deeper issue in the document structure. Processing stops, and logs (`compile_fail*.log`) should be checked.</li>
+                <li>If a model's output causes a compilation error, the script logs it and tries the next model in the sequence.</li> <!-- Updated -->
+                <li>If a page fails all model translation attempts (API or compile errors), its image is saved in `failed_pages/`, a placeholder is inserted in the LaTeX, and processing continues (if the placeholder compiles).</li> <!-- Updated -->
+                <li>If the generated LaTeX fails to compile *even with a placeholder inserted*, it indicates a critical issue (likely in the preamble or previous content). Processing stops, and logs (`compile_fail*.log`, `compile_fatal_placeholder*.log`) should be checked.</li> <!-- Updated -->
                 <li>Fix errors in `cumulative_good.tex` manually, then rerun the script to resume from the corrected state.</li>
             </ul>
         </li>
@@ -172,8 +172,8 @@ python translator.py paper_v2.pdf --working-dir /path/to/my/latex_output</code><
         <li><strong>Page-by-Page Processing:</strong> Handles long documents by processing one page at a time.</li>
         <li><strong>Image-Based Translation:</strong> Converts PDF pages to images for multimodal AI input.</li>
         <li><strong>Contextual Prompting:</strong> Provides models with context from the previous page's LaTeX output to improve consistency.</li>
-        <li><strong>Compilation Checks:</strong> Attempts `pdflatex` compilation after each page to catch errors early.</li>
-        <li><strong>Graceful Failure Handling:</strong> Inserts placeholders for pages that fail translation or cause compilation errors, allowing processing to continue where possible. Saves images of failed pages.</li>
+        <li><strong>Inline Compilation Checks:</strong> Attempts `pdflatex` compilation after *each model's successful API response* to catch LaTeX errors early and allow fallback to other models.</li> <!-- Updated -->
+        <li><strong>Graceful Failure Handling:</strong> Tries multiple models if one produces invalid LaTeX. Inserts placeholders only if *all* models fail for a page. Saves images of failed pages.</li> <!-- Updated -->
         <li><strong>State Management:</strong> Automatically saves and resumes progress using `state.json`.</li>
         <li><strong>Performance Reporting:</strong> Generates statistics (`model_stats.json`) and a final PDF report summarizing which models were used and which pages failed.</li>
         <li><strong>Command-Line Interface:</strong> Flexible control via CLI arguments.</li>
