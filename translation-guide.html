@@ -30,7 +30,7 @@
 
 <h1>How to Translate a Math PDF (Co-written with Gemini 2.5 Pro)</h1>
 
-<p>Nowadays, multimodal AI models can take as input a math paper in a non-English language and output a translation directly in LaTeX. Below is a guide on this. Before proceeding, beware that there are always risks of hallucination or error from the AI and from the fact that this guide was written in April 2025 and was suboptimal even when written.</p> 
+<p>Nowadays, multimodal AI models can take as input a math paper in a non-English language and output a translation directly in LaTeX. Below is a guide on this. Before proceeding, beware that there are always risks of hallucination or error from the AI and from the fact that this guide was written in April 2025 and was suboptimal even when written.</p>
 
 <p>A quick note: for this to work, the core capability for this task has to exist in the multimodal AI itself. The guide below merely provides scaffolding to overcome the following common challenges:</p>
 <ul>
@@ -59,19 +59,19 @@
 
 <p>We provide an example script co-written with Gemini:</p>
 <ul>
-    <li><a href="translator.py" download>translator.py</a>: Uses a **Chunk-Based, AI-Assisted Synthesis** approach.</li>
+    <li><a href="test4.py" download>test4.py</a>: Uses a **Chunk-Based, AI-Assisted Synthesis** approach.</li>
 </ul>
-<!-- Make sure translator.py is in the same directory as this HTML file, or adjust the href path -->
+<!-- Make sure test4.py is in the same directory as this HTML file, or adjust the href path -->
 <p>In order to use this script, you first need to obtain an API key for the relevant AI provider and set up a Python environment with the necessary libraries installed.</p>
 
 <p>I'll let Gemini explain the usage of this script in more detail:</p>
 
 <!-- ================================================================= -->
-<!-- Explanation for Script: translator.py (Chunk-Based Synthesis)         -->
+<!-- Explanation for Script: test4.py (Chunk-Based Synthesis)         -->
 <!-- ================================================================= -->
 <div class="gemini-explanation">
-    <h3>Script: Chunk-Based AI Translation (`translator.py`)</h3>
-    <p>This script divides the input PDF into logical chunks (using AI analysis or fixed page counts), translates each chunk individually using a *single selected AI model*, and then attempts to synthesize a coherent final LaTeX document. It extracts the preamble and body from each successfully compiled chunk and uses AI again to merge the preambles intelligently.</p>
+    <h3>Script: Chunk-Based AI Translation (`test4.py`)</h3>
+    <p>This script divides the input PDF into logical chunks (using AI analysis or fixed page counts), translates each chunk individually using a *single selected AI model*, attempts to extract bibliography information, synthesizes a coherent final LaTeX document, and then attempts to compile the final LaTeX document into a PDF.</p>
 
     <h4>1. Requirements:</h4>
     <ul class="requirements">
@@ -81,7 +81,7 @@
             <p class="note">(Note: `pdf2image` and `Pillow` are no longer needed as the script uploads PDF chunks directly if the model supports it).</p>
         </li>
         <!-- Poppler is no longer needed -->
-        <li><strong>LaTeX Distribution:</strong> A working installation (TeX Live, MiKTeX) is **required**. The `pdflatex` command must be runnable from your terminal for compilation checks and final output generation.</li>
+        <li><strong>LaTeX Distribution:</strong> A working installation (TeX Live, MiKTeX) is **required**. The `pdflatex` and `bibtex` (if using bibliography) commands must be runnable from your terminal for final compilation.</li>
         <li><strong>API Key:</strong> Set the environment variable for the *provider of the model you intend to use*:
             <ul>
                 <li><code>GOOGLE_API_KEY</code> (or <code>GEMINI_API_KEY</code>) for Gemini models</li>
@@ -94,18 +94,18 @@
 
     <h4>2. Configuration (Optional):</h4>
     <ul>
-        <li><strong>Model Configs:</strong> Edit `get_model_configs()` in `translator.py` to add/update model details or change defaults in `DEFAULT_MODEL_KEY_MAP`.</li>
+        <li><strong>Model Configs:</strong> Edit `get_model_configs()` in `test4.py` to add/update model details or change defaults in `DEFAULT_MODEL_KEY_MAP`.</li>
         <li><strong>Chunk Size:</strong> Adjust `TARGET_PAGES_PER_CHUNK` constant or use the `--chunk-size` flag (affects fallback chunking if AI definition fails).</li>
         <li><strong>Working Directory:</strong> Defaults to `./latex_processing_llm`. Use the `--working-dir` flag to change this.</li>
-        <li><strong>Retries:</strong> Adjust `MAX_CHUNK_RETRIES` for API/compile attempts per chunk.</li>
+        <li><strong>Retries:</strong> Adjust `MAX_CHUNK_RETRIES` for API attempts per chunk.</li>
     </ul>
 
     <h4>3. Running the Script:</h4>
-    <p>Open your terminal/command prompt in the directory containing `translator.py`.</p>
+    <p>Open your terminal/command prompt in the directory containing `test4.py`.</p>
     <p><strong>Basic Command (using provider defaults):</strong></p>
-    <pre><code>python translator.py [path/to/your/input.pdf] [--provider PROVIDER] [options...]</code></pre>
+    <pre><code>python3 test4.py [path/to/your/input.pdf] [--provider PROVIDER] [options...]</code></pre>
     <p><strong>Command with Specific Model:</strong></p>
-    <pre><code>python translator.py [path/to/your/input.pdf] --model MODEL_KEY [options...]</code></pre>
+    <pre><code>python3 test4.py [path/to/your/input.pdf] --model MODEL_KEY [options...]</code></pre>
     <ul>
         <li>The <strong>Input PDF Path</strong> is the first (optional) argument. If omitted, it defaults to `input.pdf`.</li>
         <li>Use <code>--provider</code> (gemini, openai, claude) to select the AI service.</li>
@@ -114,18 +114,18 @@
 
     <p><strong>Example Commands:</strong></p>
     <pre><code class="language-bash"># Translate my_paper.pdf using the default Gemini model
-python translator.py my_paper.pdf --provider gemini
+python3 test4.py my_paper.pdf --provider gemini
 
 # Translate paper_v2.pdf using Claude 3.7 Sonnet specifically
-python translator.py paper_v2.pdf --model claude-3.7-sonnet
+python3 test4.py paper_v2.pdf --model claude-3.7-sonnet
 
 # Translate input.pdf using OpenAI's gpt-4o, custom chunk size, different working dir
-python translator.py --provider openai --model gpt-4o --chunk-size 15 --working-dir /data/gpt4o_translation
+python3 test4.py --provider openai --model gpt-4o --chunk-size 15 --working-dir /data/gpt4o_translation
 
 # Clean the working directory before starting a fresh run
-python translator.py my_paper.pdf --provider gemini --clean</code></pre>
+python3 test4.py my_paper.pdf --provider gemini --clean</code></pre>
 
-    <p class="note"><em>Use quotes around paths with spaces. You might need <code>python3</code> instead of <code>python</code>. The <code>--clean</code> flag will ask for confirmation before deleting the working directory.</em></p>
+    <p class="note"><em>Use quotes around paths with spaces. You might need <code>python</code> instead of <code>python3</code>. The <code>--clean</code> flag will ask for confirmation before deleting the working directory.</em></p>
 
     <h4>4. Command-Line Options (Flags):</h4>
     <ul>
@@ -141,14 +141,14 @@ python translator.py my_paper.pdf --provider gemini --clean</code></pre>
      <h4>5. Output Files (in Working Directory):</h4>
     <ul>
         <li><code>*_translated.tex</code>: The final synthesized LaTeX source file (e.g., `my_paper_translated.tex`).</li>
-        <li><code>*_translated.pdf</code>: The final compiled PDF output.</li>
+        <li><code>*_translated.pdf</code>: The final compiled PDF output (if compilation succeeds).</li>
+        <li><code>*.bib</code>: The extracted bibliography file (if extraction succeeds).</li>
         <li><code>processing.log</code>: Detailed log of the entire process.</li>
         <li><code>prompts_and_responses.log</code>: Log of prompts sent to the AI and summaries of responses received.</li>
         <li><code>state.json</code>: Stores the last completed chunk index and other state for resuming.</li>
         <li><code>chunk-division.txt</code>: JSON file containing the determined chunk definitions (page ranges, descriptions).</li>
-        <li><code>latex_aux/</code>: Directory containing auxiliary files from all LaTeX compilations (`.log`, `.aux`, etc.).</li>
-        <li><code>saved_pdf_chunks/</code>: Contains the individual PDF files created for each chunk sent to the AI.</li>
-        <li><code>failed_chunks/</code>: Contains the generated <code>.tex</code> and compilation <code>.log</code> files for chunks that failed all processing attempts.</li>
+        <li><code>latex_aux/</code>: Directory containing auxiliary files from the final LaTeX compilation (`.log`, `.aux`, etc.).</li>
+        <li><code>saved_pdf_chunks/</code>: Contains the individual PDF files created for each chunk sent to the AI (these are deleted after use).</li>
     </ul>
 
     <h4>6. Resuming and Error Handling:</h4>
@@ -156,11 +156,8 @@ python translator.py my_paper.pdf --provider gemini --clean</code></pre>
         <li><strong>Resuming:</strong> Run the script again with the same input PDF, provider/model, and working directory. It reads `state.json` and `chunk-division.txt` to continue from the last successfully completed chunk.</li>
         <li><strong>Failures:</strong>
             <ul>
-                <li>If an API call fails, the script retries up to `MAX_CHUNK_RETRIES` times with backoff.</li>
-                <li>If the LaTeX generated for a chunk fails to compile, the script also retries compilation (potentially after retrying the API call).</li>
-                <li>If a chunk fails all API and compilation attempts, its generated `.tex` and logs are saved in `failed_chunks/`, a placeholder is inserted into the final document structure, and processing continues to the next chunk.</li>
-                <li>If the *final* concatenated document fails to compile, an error is logged, and the final PDF won't be generated. The intermediate `.tex` file will still be available.</li>
-                <li>Check `processing.log` and `failed_chunks/` for details on errors. You might need to manually fix issues in the source `.tex` files or adjust script parameters.</li>
+                <li>If an API call for a chunk fails after `MAX_CHUNK_RETRIES` attempts, or if the response cannot be parsed, the script will raise a `ChunkProcessingError` and **abort**. Check `processing.log` for details.</li>
+                <li>If the *final* concatenated document fails to compile, an error is logged, and the final PDF won't be generated. The intermediate `.tex` file will still be available. Check the logs in `latex_aux/` for compilation errors.</li>
             </ul>
         </li>
     </ul>
@@ -169,10 +166,12 @@ python translator.py my_paper.pdf --provider gemini --clean</code></pre>
     <ul>
         <li><strong>Chunk-Based Processing:</strong> Divides the PDF into multi-page chunks, suitable for models that handle PDF input directly.</li>
         <li><strong>AI-Driven Chunking:</strong> Attempts to use the selected AI to determine logical chunk boundaries based on document structure (falls back to fixed size).</li>
+        <li><strong>Bibliography Extraction:</strong> Attempts to extract references into a `.bib` file using the AI.</li>
         <li><strong>Preamble Synthesis:</strong> Extracts preambles from successful chunks and uses AI to synthesize a unified final preamble (falls back to basic concatenation).</li>
-        <li><strong>Single Model Per Run:</strong> Uses one selected AI model (Gemini, OpenAI, or Claude) for all AI tasks (chunking, translation, synthesis) in a given run.</li>
-        <li><strong>Robust Retries:</strong> Includes retries for both API calls and LaTeX compilation steps for each chunk.</li>
-        <li><strong>Graceful Chunk Failure:</strong> Inserts placeholders for completely failed chunks rather than stopping the entire process. Saves failed data for diagnosis.</li>
+        <li><strong>Improved Math Prompts:</strong> Prompts include instructions to avoid common errors like text accents in math mode or double sub/superscripts.</li>
+        <li><strong>Final Compilation:</strong> Attempts to compile the final `.tex` file using `pdflatex` and `bibtex` to produce a PDF.</li>
+        <li><strong>Single Model Per Run:</strong> Uses one selected AI model (Gemini, OpenAI, or Claude) for all AI tasks in a given run.</li>
+        <li><strong>Abort on Chunk Failure:</strong> Stops processing if a chunk cannot be successfully processed after retries within the API call or during parsing, preventing partial/incomplete output.</li>
         <li><strong>State Management:</strong> Automatically saves and resumes progress using `state.json`.</li>
         <li><strong>Detailed Logging:</strong> Separates general processing logs (`processing.log`) from AI interaction logs (`prompts_and_responses.log`).</li>
         <li><strong>Command-Line Interface:</strong> Flexible control over provider, model, chunking, and directories.</li>
