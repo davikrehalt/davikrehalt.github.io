@@ -22,6 +22,7 @@ import tempfile
 from datetime import datetime
 import math
 import httpx # For fetching files from URLs if needed later
+import asyncio # ADDED
 
 # --- Configuration ---
 
@@ -147,7 +148,7 @@ STATE_FILE = WORKING_DIR / "state.json"
 FINAL_TEX_FILE = WORKING_DIR / "final_document.tex"
 FINAL_PDF_FILE = WORKING_DIR / "final_document.pdf"
 LATEX_AUX_DIR = WORKING_DIR / "latex_aux"
-FAILED_CHUNKS_DIR = WORKING_DIR / "failed_chunks" # Store failed chunk LaTeX/compile logs
+# REMOVED FAILED_CHUNKS_DIR
 PROMPT_LOG_FILE = WORKING_DIR / "prompts_and_responses.log"
 
 # --- System Prompts ---
@@ -202,7 +203,7 @@ fallback_preamble = """\\documentclass[11pt]{amsart}
 """
 
 # --- API Key Handling and Client Initialization ---
-def setup_clients():
+def setup_clients(): # Keep sync for now, init async clients inside if needed
     """Initializes API clients based on environment variables."""
     global gemini_client, openai_client, anthropic_client
     success = True
@@ -274,7 +275,7 @@ def setup_clients():
 
     return success
 
-def setup_target_provider_and_model(requested_provider=None, requested_model_key=None):
+async def setup_target_provider_and_model(requested_provider=None, requested_model_key=None): # Make async
     """Sets the target provider and model based on CLI args or defaults."""
     global TARGET_PROVIDER, TARGET_MODEL_INFO, DEFAULT_PROVIDER, DEFAULT_MODEL_KEY_MAP
     all_models = get_model_configs()
@@ -396,7 +397,7 @@ def get_total_pages(pdf_path):
         logger.error(f"Error getting page count with pypdf for {pdf_path}: {e}")
         return 0
 
-def upload_pdf_to_provider(pdf_path: Path, provider: str) -> Optional[Union[glm.File, str]]:
+def upload_pdf_to_provider(pdf_path: Path, provider: str) -> Optional[Union[genai.types.File, str]]: # ENSURE SYNC
     """Uploads the full PDF to the specified provider's file storage."""
     if not pdf_path.exists():
         logger.error(f"PDF file not found for upload: {pdf_path}")
@@ -408,12 +409,12 @@ def upload_pdf_to_provider(pdf_path: Path, provider: str) -> Optional[Union[glm.
     if provider == "gemini":
         if not gemini_client: return None
         try:
-            # Ensure genai is used for upload/get/delete
+            # Use sync upload_file and get_file
             uploaded_file = genai.upload_file(path=str(pdf_path), display_name=pdf_path.name)
             while uploaded_file.state.name == "PROCESSING":
                 logger.debug(f"Gemini file '{uploaded_file.name}' processing...")
-                time.sleep(5)
-                uploaded_file = genai.get_file(name=uploaded_file.name)
+                time.sleep(5) # Use sync sleep
+                uploaded_file = genai.get_file(name=uploaded_file.name) # Use sync get_file
             if uploaded_file.state.name == "FAILED":
                 logger.error(f"Gemini file upload failed processing: {uploaded_file.name}")
                 return None
@@ -428,14 +429,12 @@ def upload_pdf_to_provider(pdf_path: Path, provider: str) -> Optional[Union[glm.
     elif provider == "openai":
         if not openai_client: return None
         try:
+            # REMOVE async/await/to_thread for sync client
             with open(pdf_path, "rb") as f:
-                # Use "user_data" purpose as recommended
-                response = openai_client.files.create(file=f, purpose="user_data")
+                 response = openai_client.files.create(file=f, purpose="user_data") # Use sync create
             elapsed = time.time() - start_time
-            # Wait briefly for processing? OpenAI API doesn't explicitly require polling like Gemini's.
-            # Let's assume it's ready quickly.
             logger.info(f"OpenAI: Upload successful. File ID: {response.id}, Status: {response.status} ({elapsed:.2f}s)")
-            return response.id # Return the File ID string
+            return response.id
         except Exception as e:
             elapsed = time.time() - start_time
             logger.error(f"OpenAI: Error uploading file after {elapsed:.2f}s: {e}", exc_info=True)
@@ -451,18 +450,25 @@ def upload_pdf_to_provider(pdf_path: Path, provider: str) -> Optional[Union[glm.
         logger.error(f"Unsupported provider for PDF upload: {provider}")
         return None
 
-def delete_provider_file(file_ref: Union[glm.File, str], provider: str):
+def delete_provider_file(file_ref: Union[genai.types.File, str], provider: str): # ENSURE SYNC
     """Deletes an uploaded file from the specified provider."""
     if not file_ref:
         logger.debug(f"{provider}: No file reference provided for deletion.")
         return
 
     if provider == "gemini":
-        if not gemini_client or not isinstance(file_ref, glm.File): return
-        file_name = file_ref.name
+        if not gemini_client: return
+        # Determine file name correctly
+        if isinstance(file_ref, genai.types.File):
+            file_name = file_ref.name
+        elif isinstance(file_ref, str):
+             file_name = file_ref # Assume string is the name
+        else:
+             logger.warning(f"Gemini: Invalid file_ref type for deletion: {type(file_ref)}")
+             return
         logger.info(f"Gemini: Attempting to delete file: {file_name}")
         try:
-            genai.delete_file(name=file_name)
+            genai.delete_file(name=file_name) # Use sync delete (REMOVE await)
             logger.info(f"Gemini: Successfully deleted file: {file_name}")
         except Exception as e:
             logger.warning(f"Gemini: Could not delete file {file_name}: {e}")
@@ -472,7 +478,7 @@ def delete_provider_file(file_ref: Union[glm.File, str], provider: str):
         file_id = file_ref
         logger.info(f"OpenAI: Attempting to delete file: {file_id}")
         try:
-            openai_client.files.delete(file_id=file_id)
+            openai_client.files.delete(file_id=file_id) # Use sync delete (REMOVE await)
             logger.info(f"OpenAI: Successfully deleted file: {file_id}")
         except Exception as e:
             logger.warning(f"OpenAI: Could not delete file {file_id}: {e}")
@@ -584,17 +590,16 @@ def log_prompt_and_response(
     except Exception as e:
         logger.error(f"Error writing to prompt log file: {e}")
 
-# --- NEW: General Prompt Sending Function --- 
-def send_prompt_to_provider(
-    prompt: str,
+# --- NEW: General Prompt Sending Function ---
+def send_prompt_to_provider( # ENSURE SYNC
+    prompt: Union[str, list],
     provider: str,
     model_info: Dict[str, Any],
-    client: Any, # The initialized client instance
+    client: Any,
     system_prompt: Optional[str] = None,
-    files: Optional[List[Union[glm.File, Path]]] = None, # List of Gemini files or paths for upload
+    files: Optional[List[Union[genai.types.File, Path]]] = None, # Use correct type hint genai.types.File
     temperature: float = 0.3,
     max_retries: int = 2,
-    # page_num: Optional[int] = None, # Removed page_num as this is general
     timeout_seconds: int = 300
 ) -> Dict[str, Any]:
     """Sends a text prompt (optionally with files for Gemini) to the specified provider.
@@ -611,7 +616,7 @@ def send_prompt_to_provider(
         logger.debug(f"Attempt {attempt}/{max_retries} for {provider} call...")
         response_data = {"status": "error", "error_message": f"Attempt {attempt} failed for {provider}"}
         start_time = time.time()
-        temp_files_to_delete = [] # Keep track of files uploaded just for this call
+        temp_files_to_delete_locally = [] # Track temp files created here
 
         try:
             if provider == "gemini":
@@ -621,24 +626,26 @@ def send_prompt_to_provider(
                 generation_config = genai.types.GenerationConfig(temperature=temperature)
                 safety_settings = [{"category": c, "threshold": "BLOCK_MEDIUM_AND_ABOVE"} for c in ["HARM_CATEGORY_DANGEROUS_CONTENT"]]
 
-                # Process files: Use existing glm.File or upload Paths
+                # Process files: Use existing File or upload Paths
                 processed_files = []
                 if files:
                     for file_item in files:
                         if isinstance(file_item, Path):
                             logger.debug(f"Gemini (send_prompt): Uploading temp file {file_item.name}...")
-                            uploaded_file = genai.upload_file(path=str(file_item), display_name=f"temp_{file_item.name}")
-                            while uploaded_file.state.name == "PROCESSING": time.sleep(3); uploaded_file = genai.get_file(uploaded_file.name)
-                            if uploaded_file.state.name == "FAILED": raise RuntimeError(f"Temporary file upload failed: {file_item.name}")
+                            # Use sync upload
+                            uploaded_file = upload_pdf_to_provider(file_item, provider)
+                            if not uploaded_file:
+                                raise RuntimeError(f"Temporary file upload failed in send_prompt: {file_item.name}")
                             processed_files.append(uploaded_file)
-                            temp_files_to_delete.append(uploaded_file) # Mark for deletion
-                        elif isinstance(file_item, genai.types.File): # CORRECTED: Check against genai.types.File
+                            temp_files_to_delete_locally.append(uploaded_file) # Mark for deletion later in this function
+                        elif isinstance(file_item, genai.types.File): # Use correct type hint
                             processed_files.append(file_item) # Use existing file reference
                         else:
                              logger.warning(f"Gemini (send_prompt): Unsupported file type: {type(file_item)}")
                 
-                content_parts = processed_files + [prompt] # Files first, then prompt
+                content_parts = processed_files + ([prompt] if isinstance(prompt, str) else prompt)
 
+                # Use sync generate_content (REMOVE await)
                 response = model_instance.generate_content(
                      content_parts,
                      generation_config=generation_config,
@@ -666,6 +673,7 @@ def send_prompt_to_provider(
                 if system_prompt: messages.append({"role": "system", "content": system_prompt})
                 messages.append({"role": "user", "content": prompt})
 
+                # Use sync completions.create (REMOVE await)
                 response = client.chat.completions.create(
                      model=model_name,
                      messages=messages,
@@ -689,6 +697,7 @@ def send_prompt_to_provider(
                 # Claude also generally takes files inline in the prompt content blocks.
                 # This function assumes the caller prepared the prompt string correctly.
                 messages = [{"role": "user", "content": prompt}]
+                # Use sync messages.create (REMOVE await)
                 response = client.messages.create(
                      model=model_name,
                      max_tokens=4096,
@@ -718,9 +727,9 @@ def send_prompt_to_provider(
         
         finally:
             # Clean up temporary files uploaded by *this function call*
-            for file_ref in temp_files_to_delete:
-                delete_provider_file(file_ref, "gemini")
-            
+            for file_ref in temp_files_to_delete_locally: # Correct variable name
+                delete_provider_file(file_ref, "gemini") # Call sync delete
+
             elapsed = time.time() - start_time
             logger.debug(f"{provider} attempt {attempt} finished in {elapsed:.2f}s. Status: {response_data['status']}")
 
@@ -728,13 +737,13 @@ def send_prompt_to_provider(
         if response_data["status"] != "success" and attempt < max_retries:
             wait_time = random.uniform(2, 5) * attempt # Exponential backoff (simple)
             logger.info(f"Waiting {wait_time:.1f}s before retry...")
-            time.sleep(wait_time)
+            time.sleep(wait_time) # Use sync sleep
 
     return response_data
 
 # --- Provider-Specific LaTeX Generation ---
 
-def get_latex_from_chunk_gemini(
+async def get_latex_from_chunk_gemini( # CHANGE to async def
     chunk_pdf_path: Path, # Path to the chunk PDF file
     chunk_num: int,
     total_chunks: int,
@@ -772,7 +781,7 @@ def get_latex_from_chunk_gemini(
         "\\n# Core Requirements:",
         "- **Include Preamble:** Your output MUST start with `\\documentclass` and include a suitable preamble with common packages (inputenc, fontenc, amsmath, amssymb, graphicx, hyperref, etc.) and any theorem environments detected.",
         "- **Include Metadata:** Include `\\title`, `\\author`, `\\date` based on the content, using placeholders if unclear.",
-        "- **Include Body Wrappers:** Include `\\begin{document}`, `\\maketitle` (if applicable) at the start, and ensure the final output includes `\\end{document}` at the very end.", # MODIFIED: Used literal string
+        "- **Include Body Wrappers:** Include `\\begin{{document}}`, `\\maketitle` (if applicable) at the start, and ensure the final output includes `\\end{{document}}` at the very end.", # MODIFIED: Used literal string
         "- **Translate:** All non-English text to English.",
         "- **Math Accuracy:** Preserve all mathematical content accurately.",
         "- **Structure:** Maintain semantic structure.",
@@ -786,34 +795,42 @@ def get_latex_from_chunk_gemini(
     prompt = "\\n".join(prompt_parts)
 
     # --- API Call Implementation (Upload, Call, Process, Delete) ---
-    # ... (Gemini API call logic remains largely the same as previously attempted) ...
     start_time = time.time()
     latex_output = None
     success = False
     error_msg = None
-    chunk_file_ref: Optional[glm.File] = None
+    chunk_file_ref: Optional[genai.types.File] = None # Correct type hint
 
     try:
-        # 1. Upload chunk
+        # 1. Upload chunk (wrap sync upload_file in to_thread)
         logger.debug(f"Gemini (Chunk {chunk_num}): Uploading...")
-        chunk_file_ref = genai.upload_file(path=str(chunk_pdf_path), display_name=f"chunk_{chunk_num}_{chunk_pdf_path.name}")
-        while chunk_file_ref.state.name == "PROCESSING": time.sleep(5); chunk_file_ref = genai.get_file(name=chunk_file_ref.name)
-        if chunk_file_ref.state.name == "FAILED": raise RuntimeError(f"Gemini file upload failed processing: {chunk_file_ref.name}")
+        # Wrap sync upload_file
+        chunk_file_ref = await asyncio.to_thread(
+            genai.upload_file, path=str(chunk_pdf_path), display_name=f"chunk_{chunk_num}_{chunk_pdf_path.name}"
+        )
+        while chunk_file_ref.state.name == "PROCESSING":
+            # Use await asyncio.sleep
+            await asyncio.sleep(5)
+            # Wrap sync get_file
+            chunk_file_ref = await asyncio.to_thread(genai.get_file, name=chunk_file_ref.name)
+        if chunk_file_ref.state.name == "FAILED":
+            raise RuntimeError(f"Gemini file upload failed processing: {chunk_file_ref.name}")
         logger.debug(f"Gemini (Chunk {chunk_num}): Upload OK: {chunk_file_ref.name}")
 
         # 2. Prep model & config
-        # MODIFIED: Instantiate model directly from genai module
         model_instance = genai.GenerativeModel(model_name)
         generation_config=genai.types.GenerationConfig(temperature=0.3)
         safety_settings = [{"category": c, "threshold": "BLOCK_MEDIUM_AND_ABOVE"} for c in ["HARM_CATEGORY_DANGEROUS_CONTENT"]]
 
-        # 3. Call API
+        # 3. Call API (wrap sync generate_content)
         logger.debug(f"Gemini (Chunk {chunk_num}): Sending prompt...")
-        response = model_instance.generate_content(
-             [chunk_file_ref, prompt],
-             generation_config=generation_config,
-             safety_settings=safety_settings,
-             request_options={'timeout': 300}
+        # Wrap sync generate_content
+        response = await asyncio.to_thread(
+            model_instance.generate_content,
+            [chunk_file_ref, prompt],
+            generation_config=generation_config,
+            safety_settings=safety_settings,
+            request_options={'timeout': 300}
         )
 
         # 4. Process response
@@ -836,16 +853,17 @@ def get_latex_from_chunk_gemini(
         latex_output = None
 
     finally:
-        # 5. Delete uploaded chunk
+        # 5. Delete uploaded chunk (use async delete helper)
         if chunk_file_ref:
-            delete_provider_file(chunk_file_ref, "gemini")
+            # KEEP await asyncio.to_thread for the sync delete helper
+            await asyncio.to_thread(delete_provider_file, chunk_file_ref, "gemini")
 
     elapsed = time.time() - start_time
     logger.info(f"Gemini (Chunk {chunk_num}): API call finished in {elapsed:.2f}s. Success: {success}")
     log_prompt_and_response(chunk_num, page_range_str, "gemini", f"{nickname} ({model_name})", prompt, latex_output if success else error_msg, success, error_msg if not success else None)
     return latex_output, success, error_msg
 
-def get_latex_from_chunk_openai(
+async def get_latex_from_chunk_openai(
     chunk_pdf_path: Path,
     chunk_num: int,
     total_chunks: int,
@@ -874,6 +892,7 @@ def get_latex_from_chunk_openai(
          limited_keys_str = ", ".join(valid_bib_keys[:20]) + ("..." if len(valid_bib_keys) > 20 else "")
          bib_key_info = f"Valid BibTeX keys: [{limited_keys_str}]. Use \\cite{{key}} ONLY for these keys."
 
+    # Update template to include bib_key_info dynamically
     user_prompt_text_template = f"""# Task: LaTeX Translation (Chunk {{chunk_num}}/{{total_chunks}})
 Analyze the **entirety** of the provided PDF document chunk (uploaded as file ID {{CHUNK_FILE_ID_PLACEHOLDER}}).
 This chunk represents the content from a larger document starting around "{{start_desc}}" and ending around "{{end_desc}}".
@@ -887,12 +906,22 @@ Generate a **complete and compilable English LaTeX document** corresponding *onl
 - **Math Accuracy:** Preserve math accurately.
 - **Structure:** Maintain semantic structure.
 - **Figures/Tables:** Use placeholders like `placeholder_chunk{{chunk_num}}_imgX.png`.
-- **Citations:** {{bib_key_info}} If citing a key NOT in this list, use a textual placeholder like `[Author, Year]` instead of \\cite.
+- **Citations:** {bib_key_info} If citing a key NOT in this list, use a textual placeholder like `[Author, Year]` instead of \\cite.
 - **Escaping:** Escape special LaTeX characters in text.
-- **Focus:** Generate LaTeX only for content from "{{start_desc}}" to "{{end_desc}}".
+- **Focus:** Generate LaTeX **only** for content from "{{start_desc}}" to "{{end_desc}}". Exclude any bibliography section (e.g., \\begin{{thebibliography}}).
 
 # Output Format:
 Provide the complete LaTeX document directly, without markdown formatting like ```latex ... ```."""
+
+    # Format the template with actual chunk info
+    formatted_prompt_template = user_prompt_text_template.format(
+        chunk_num=chunk_num,
+        total_chunks=total_chunks,
+        start_desc=start_desc,
+        end_desc=end_desc,
+        bib_key_info=bib_key_info,
+        CHUNK_FILE_ID_PLACEHOLDER="{CHUNK_FILE_ID_PLACEHOLDER}" # Keep placeholder
+    )
 
     # --- API Call Implementation ---
     start_time = time.time()
@@ -902,28 +931,29 @@ Provide the complete LaTeX document directly, without markdown formatting like `
     chunk_file_id: Optional[str] = None # OpenAI uses file ID string
 
     try:
-        # 1. Upload the chunk PDF
+        # 1. Upload the chunk PDF (wrap sync create in to_thread)
         logger.debug(f"OpenAI (Chunk {chunk_num}): Uploading chunk file {chunk_pdf_path.name}...")
         with open(chunk_pdf_path, "rb") as f:
-            response_upload = openai_client.files.create(file=f, purpose="user_data")
+            # Assuming client.files.create is sync based on typical SDKs
+            response_upload = await asyncio.to_thread(openai_client.files.create, file=f, purpose="user_data")
         chunk_file_id = response_upload.id
         logger.debug(f"OpenAI (Chunk {chunk_num}): Chunk upload successful: {chunk_file_id}")
 
         # 2. Finalize prompt with file ID
-        final_user_prompt = user_prompt_text_template.replace("{CHUNK_FILE_ID_PLACEHOLDER}", chunk_file_id)
+        final_user_prompt = formatted_prompt_template.replace("{CHUNK_FILE_ID_PLACEHOLDER}", chunk_file_id)
 
         # 3. Construct messages payload
         messages = [
-             {"role": "system", "content": "You are an expert LaTeX translator. Generate complete, compilable LaTeX documents based on the provided PDF content and instructions. Output only the raw LaTeX code."}, # System prompt
+             {"role": "system", "content": "You are an expert LaTeX translator. Generate complete, compilable LaTeX documents based on the provided PDF content and instructions. Output only the raw LaTeX code."},
              {"role": "user", "content": final_user_prompt}
          ]
 
-        # 4. Make the API call
+        # 4. Make the API call (use await completions.create)
         logger.debug(f"OpenAI (Chunk {chunk_num}): Sending prompt to {nickname}...")
-        response = openai_client.chat.completions.create(
+        response = await openai_client.chat.completions.create(
              model=model_name,
              messages=messages,
-             max_tokens=4096, # Adjust as needed, depends on model
+             max_tokens=4096,
              temperature=0.3,
              timeout=300.0
          )
@@ -951,17 +981,16 @@ Provide the complete LaTeX document directly, without markdown formatting like `
         latex_output = None
 
     finally:
-        # 6. Delete the uploaded chunk PDF
+        # 6. Delete the uploaded chunk PDF (use async delete helper)
         if chunk_file_id:
-            delete_provider_file(chunk_file_id, "openai")
+            await delete_provider_file(chunk_file_id, "openai")
 
     elapsed = time.time() - start_time
     logger.info(f"OpenAI (Chunk {chunk_num}): API call finished in {elapsed:.2f}s. Success: {success}")
-    # Log using the template string before ID replacement for readability
-    log_prompt_and_response(chunk_num, page_range_str, "openai", f"{nickname} ({model_name})", user_prompt_text_template.replace("{CHUNK_FILE_ID_PLACEHOLDER}", chunk_file_id or "<upload failed>"), latex_output if success else error_msg, success, error_msg if not success else None)
+    log_prompt_and_response(chunk_num, page_range_str, "openai", f"{nickname} ({model_name})", formatted_prompt_template.replace("{CHUNK_FILE_ID_PLACEHOLDER}", chunk_file_id or "<upload failed>"), latex_output if success else error_msg, success, error_msg if not success else None)
     return latex_output, success, error_msg
 
-def get_latex_from_chunk_claude(
+async def get_latex_from_chunk_claude(
     chunk_pdf_path: Path,
     chunk_num: int,
     total_chunks: int,
@@ -984,15 +1013,15 @@ def get_latex_from_chunk_claude(
 
     logger.info(f"Claude: Requesting LaTeX for Chunk {chunk_num} {desc_range_str} from {nickname}...using chunk file {chunk_pdf_path.name}...")
 
-    # --- Read chunk PDF and base64 encode ---
+    # --- Read chunk PDF and base64 encode (use to_thread) ---
     pdf_base64 = None
     media_type = "application/pdf"
     try:
-        pdf_bytes = chunk_pdf_path.read_bytes()
-        pdf_base64 = base64.b64encode(pdf_bytes).decode('utf-8')
+        pdf_bytes = await asyncio.to_thread(chunk_pdf_path.read_bytes)
+        pdf_base64_bytes = await asyncio.to_thread(base64.b64encode, pdf_bytes)
+        pdf_base64 = pdf_base64_bytes.decode('utf-8')
         logger.debug(f"Claude (Chunk {chunk_num}): PDF encoded ({len(pdf_bytes) / 1024:.1f} KB).")
-        # Simple size check (e.g., 5MB limit for base64 string? Claude limits vary)
-        if len(pdf_base64) > 5 * 1024 * 1024:
+        if len(pdf_base64) > 15 * 1024 * 1024: # Increased limit slightly, check Claude docs
              logger.warning(f"Claude (Chunk {chunk_num}): Base64 encoded PDF is large ({len(pdf_base64)/1024**2:.1f} MB). May hit limits.")
     except Exception as e:
         logger.error(f"Claude (Chunk {chunk_num}): Failed to read/encode PDF chunk: {e}")
@@ -1019,7 +1048,7 @@ Generate a **complete and compilable English LaTeX document** corresponding *onl
 - **Figures/Tables:** Use placeholders like `placeholder_chunk{chunk_num}_imgX.png`.
 - **Citations:** {bib_key_info} If citing a key NOT in this list, use a textual placeholder like `[Author, Year]` instead of \\cite.
 - **Escaping:** Escape special LaTeX characters in text.
-- **Focus:** Generate LaTeX only for content from "{start_desc}" to "{end_desc}".
+- **Focus:** Generate LaTeX **only** for content from "{start_desc}" to "{end_desc}". Exclude any bibliography section (e.g., \\begin{{thebibliography}}).
 
 # Output Format:
 Provide the complete LaTeX document directly, without any surrounding markdown like ```latex ... ```."""
@@ -1032,9 +1061,10 @@ Provide the complete LaTeX document directly, without any surrounding markdown l
 
     try:
         # 1. Construct messages payload
+        # Claude vision models expect image type for PDFs
         content_blocks = [
              {
-                 "type": "document",
+                 "type": "image",
                  "source": {"type": "base64", "media_type": media_type, "data": pdf_base64}
              },
              {
@@ -1044,16 +1074,16 @@ Provide the complete LaTeX document directly, without any surrounding markdown l
          ]
         messages = [{"role": "user", "content": content_blocks}]
 
-        # 2. Make the API call
+        # 2. Make the API call (use await messages.create)
         logger.debug(f"Claude (Chunk {chunk_num}): Sending prompt to {nickname}...")
-        response = anthropic_client.messages.create(
+        response = await asyncio.to_thread(
+            anthropic_client.messages.create,
              model=model_name,
-             max_tokens=4096, # Adjust as needed
+             max_tokens=4096,
              messages=messages,
              system="You are an expert LaTeX translator. Generate complete, compilable LaTeX documents based on the provided PDF content and instructions. Output only the raw LaTeX code.",
-             temperature=0.3,
-             # timeout=... # httpx timeout can be configured on the client
-         )
+             temperature=0.3
+         ) # KEEP await/to_thread
 
         # 3. Process the response
         if response.content and isinstance(response.content, list) and response.content[0].type == "text":
@@ -1066,7 +1096,8 @@ Provide the complete LaTeX document directly, without any surrounding markdown l
                 logger.warning(f"Claude (Chunk {chunk_num}): {error_msg}")
                 success = False
         elif response.stop_reason == 'error':
-            error_msg = f"Claude API error. Stop Reason: {response.stop_reason}"
+            api_error_details = getattr(response, 'error', None)
+            error_msg = f"Claude API error. Stop Reason: {response.stop_reason}. Details: {api_error_details}"
             logger.error(f"Claude (Chunk {chunk_num}): {error_msg}")
             success = False
         else:
@@ -1080,253 +1111,43 @@ Provide the complete LaTeX document directly, without any surrounding markdown l
         success = False
         latex_output = None
 
-    # No file cleanup needed for Claude as it's inline
-
     elapsed = time.time() - start_time
     logger.info(f"Claude (Chunk {chunk_num}): API call finished in {elapsed:.2f}s. Success: {success}")
-    # Log prompt text only (don't log large base64 pdf)
     log_prompt_and_response(chunk_num, page_range_str, "claude", f"{nickname} ({model_name})", user_prompt_text, latex_output if success else error_msg, success, error_msg if not success else None)
     return latex_output, success, error_msg
 
 # --- Compilation and State ---
-
-def compile_latex(
-    tex_filepath: Path,
-    aux_dir: Path,
-    main_bib_file_path: Optional[Path] = None, # ADDED argument
-    num_runs: int = 2,
-    timeout: int = 120
-) -> Tuple[bool, str, Optional[Path]]:
-    """Compile a LaTeX file using pdflatex, including bibtex run if main_bib_file_path exists. Returns success, log, and path to PDF if successful."""
-    tex_filepath = Path(tex_filepath)
-    if not tex_filepath.is_file():
-        return False, f"Error: LaTeX source file not found: {tex_filepath}", None
-
-    aux_dir = Path(aux_dir)
-    aux_dir.mkdir(parents=True, exist_ok=True)
-    base_name = tex_filepath.stem
-    log_file = aux_dir / f"{base_name}.log"
-    pdf_file = aux_dir / f"{base_name}.pdf"
-    aux_file = aux_dir / f"{base_name}.aux" # Path to aux file
-
-    # Use the provided main_bib_file_path directly to check existence
-    bib_file_exists = main_bib_file_path and main_bib_file_path.exists()
-
-    # Clean previous auxiliary files for this specific compilation run
-    logger.debug(f"Cleaning aux files for {base_name} in {aux_dir}")
-    for pattern in [f"{base_name}.aux", f"{base_name}.log", f"{base_name}.toc", f"{base_name}.out", f"{base_name}.synctex.gz", f"{base_name}.pdf", f"{base_name}.fls", f"{base_name}.fdb_latexmk", f"{base_name}.bbl", f"{base_name}.blg"]: # Added bbl/blg
-        try:
-            p = aux_dir / pattern
-            if p.exists(): p.unlink()
-        except OSError as e: logger.warning(f"Could not delete potential aux file {p}: {e}")
-
-    full_log = f"--- Compiling: {tex_filepath.name} in {aux_dir.name} ---\n"
-    success = False
-    final_pdf_path = None
-    bibtex_run_occurred = False # Renamed from bibtex_run_needed for clarity
-
-    # Determine required runs (need 1 initial, 1 bibtex if needed, 1-2 final)
-    max_passes = num_runs + (1 if bib_file_exists else 0) 
-
-    for i in range(max_passes + 1): # Iterate enough times
-        pass_num = i + 1
-        is_bibtex_run = False # Flag to check if this pass is bibtex
-        run_cwd = None # Default CWD
-
-        # --- Decide action for this pass ---
-        # Run pdflatex first.
-        # If aux file exists and bib file exists, run bibtex (only once).
-        # Run pdflatex again (potentially multiple times) to resolve refs.
-        if pass_num == 1:
-             command = [ "pdflatex", "-interaction=nonstopmode", "-file-line-error", "-halt-on-error", f"-output-directory={str(aux_dir.resolve())}", str(tex_filepath.resolve()) ]
-             current_pass_desc = f"Initial pdflatex (Pass {pass_num})"
-        # Run BibTeX on the *second* pass IF needed and not already run
-        elif pass_num == 2 and aux_file.exists() and bib_file_exists and not bibtex_run_occurred:
-             command = [ "bibtex", str(aux_file.resolve().stem) ] # Bibtex often just needs the stem
-             # Bibtex needs to run *in* the aux directory to find files (.aux, potentially .bst)
-             run_cwd = aux_dir.resolve()
-             is_bibtex_run = True
-             bibtex_run_occurred = True # Mark bibtex as having run
-             current_pass_desc = f"BibTeX (Pass {pass_num})"
-        # Run pdflatex on subsequent passes
-        elif pass_num >= 2:
-             command = [ "pdflatex", "-interaction=nonstopmode", "-file-line-error", "-halt-on-error", f"-output-directory={str(aux_dir.resolve())}", str(tex_filepath.resolve()) ]
-             current_pass_desc = f"Post-BibTeX pdflatex (Pass {pass_num})"
-             # Stop if we've run enough passes after bibtex (or enough if no bibtex)
-             if pass_num > max_passes:
-                 full_log += f"\n--- Completed {max_passes} compilation passes. Stopping. ---\n"
-                 break
-        else: # Safety break for unexpected state
-             full_log += f"\n--- Skipping unexpected pass logic state {pass_num} ---\n"
-             continue
-
-        full_log += f"\n--- {current_pass_desc} ---\nRun: {' '.join(command)}\nCWD: {run_cwd or '.'}\n" # Log CWD
-        start_time = time.time()
-        process = None # Define process outside try
-        try:
-            # Run the command
-            process = subprocess.run(
-                 command,
-                 capture_output=True,
-                 text=True,
-                 encoding='utf-8',
-                 errors='replace',
-                 timeout=timeout,
-                 check=False, # Don't raise exception on non-zero exit
-                 cwd=run_cwd # Specify CWD if needed (for bibtex)
-            )
-            elapsed = time.time() - start_time
-            full_log += f"Pass {pass_num} completed in {elapsed:.2f}s. Return Code: {process.returncode}\n"
-            # Capture relevant output snippets
-            stdout_snippet = process.stdout[-1000:].strip() if process.stdout else ""
-            stderr_snippet = process.stderr.strip() if process.stderr else ""
-            if stdout_snippet: full_log += f"Stdout (last 1k):\n{stdout_snippet}\n...\n"
-            if stderr_snippet: full_log += f"Stderr:\n{stderr_snippet}\n"
-
-            log_content = ""
-            errors_found_in_log = []
-            # Check log file *after* pdflatex run
-            if log_file.exists() and not is_bibtex_run:
-                try:
-                    log_content = log_file.read_text(encoding='utf-8', errors='replace')
-                    # More specific error checks
-                    fatal_errors = re.findall(r"^! ", log_content, re.MULTILINE) # Any line starting with ! is usually fatal
-                    undefined_errors = re.findall(r"Undefined control sequence", log_content)
-                    missing_file_errors = re.findall(r"LaTeX Error: File `.*?' not found", log_content)
-                    errors_found_in_log = fatal_errors + undefined_errors + missing_file_errors
-                except Exception as log_read_e: 
-                    full_log += f"\n--- Error reading log file {log_file}: {log_read_e} ---\n"
-            elif process.returncode != 0 and not is_bibtex_run:
-                 full_log += f"\n--- Log file not found after {current_pass_desc} exited with code {process.returncode}. Assuming failure. ---\n"
-                 success = False
-                 break # Exit loop on definite failure
-
-            # --- Decide Outcome of This Pass ---
-            if errors_found_in_log:
-                full_log += f"\n--- LaTeX Error(s) detected in log ({current_pass_desc}): {errors_found_in_log[:5]}... ---\n"
-                success = False
-                break # Exit loop on fatal LaTeX error
-            elif process.returncode != 0:
-                if is_bibtex_run:
-                     # Read bibtex log (.blg) if it exists
-                     blg_file = aux_dir / f"{base_name}.blg"
-                     blg_content = ""
-                     if blg_file.exists():
-                          try: blg_content = blg_file.read_text(encoding='utf-8', errors='replace')[-1000:]
-                          except Exception as e_blg: blg_content = f"(Error reading .blg: {e_blg})"
-                     full_log += f"\n--- Warning: BibTeX exited with code {process.returncode}. Citations might be unresolved. Log (stdout/stderr/blg tail):\n{stdout_snippet}\n{stderr_snippet}\n{blg_content}\n---"
-                     # Don't break, let subsequent pdflatex runs proceed
-                else: # pdflatex failed, but no obvious log errors yet
-                    # If it's the last *intended* pdflatex run, treat as failure
-                    if pass_num >= max_passes:
-                        full_log += f"\n--- {current_pass_desc} exited with code {process.returncode} on final pass ({pass_num}/{max_passes}), no specific errors in log. Treating as failure. ---\n"
-                        success = False
-                        break
-                    else: 
-                        # Might be temporary (e.g., undefined refs), let it run again
-                        full_log += f"\n--- {current_pass_desc} exit code {process.returncode} on pass {pass_num}, no critical errors in log yet. Continuing. ---\n"
-            # If this pass ran pdflatex successfully
-            elif not is_bibtex_run: 
-                 full_log += f"\n--- {current_pass_desc} completed successfully (Exit code 0). ---\n"
-                 # Check for PDF only after the final intended pass
-                 if pass_num >= max_passes:
-                      if pdf_file.is_file() and pdf_file.stat().st_size > 100: # Basic check for non-empty PDF
-                           success = True
-                           final_pdf_path = pdf_file
-                           full_log += f"\n--- PDF file {pdf_file.name} generated successfully after {max_passes} passes. ---\n"
-                      else:
-                           full_log += f"\n--- Compilation finished ({max_passes} passes), but PDF file {pdf_file.name} is missing or empty. ---\n"
-                           success = False
-                      break # Stop after final check
-
-        except FileNotFoundError: 
-            full_log += f"\nError: '{command[0]}' command not found. Is LaTeX installed and in PATH?\n"
-            success = False
-            break
-        except subprocess.TimeoutExpired: 
-            elapsed = time.time() - start_time
-            full_log += f"\nError: {command[0]} timed out after {timeout}s ({current_pass_desc}, Runtime {elapsed:.1f}s).\n"
-            success = False
-            break
-        except Exception as e: 
-            elapsed = time.time() - start_time
-            full_log += f"\nError running {command[0]} ({current_pass_desc}, Runtime {elapsed:.1f}s): {e}\n"
-            success = False
-            break
-
-        # If a pdflatex run explicitly failed (errors in log or non-zero exit on last run), stop.
-        if not success and not is_bibtex_run and (errors_found_in_log or (process and process.returncode != 0 and pass_num >= max_passes)):
-             full_log += f"\n--- Stopping compilation due to failure in pass {pass_num} ({current_pass_desc}) ---\n"
-             break
-
-    # --- Final Logging ---
-    if success and final_pdf_path:
-        logger.info(f"Compilation successful: {tex_filepath.name} -> {final_pdf_path.name}")
-    else:
-        logger.error(f"Compilation FAILED: {tex_filepath.name}")
-        # Save the detailed log to a failure file
-        fail_log_path = aux_dir / f"{base_name}_compile_fail.log"
-        try:
-            fail_log_path.write_text(full_log, encoding='utf-8')
-            logger.error(f"Detailed compilation log saved to: {fail_log_path}")
-        except Exception as e_write: 
-            logger.error(f"Could not write detailed failure log to {fail_log_path}: {e_write}")
-
-    return success, full_log, final_pdf_path # Return final PDF path only on success
-
-def create_chunk_failure_placeholder(chunk_num: int, start_page: int, end_page: int, reason: str) -> str:
-    """Generates a LaTeX placeholder for a failed chunk."""
-    reason_escaped = reason.replace('_', '\\_').replace('%', '\\%').replace('&', '\\&')
-    placeholder = f"""
-% ========== CHUNK {chunk_num} (Pages {start_page}-{end_page}): FAILED ==========
-\\clearpage
-\\begin{{center}} \\vspace*{{1cm}}
-\\fbox{{ \\begin{{minipage}}{{0.85\\textwidth}} \\centering
-\\Large\\textbf{{Chunk {chunk_num} (Pages {start_page}-{end_page}): Translation/Compilation Failed}}\\\\[1em]
-\\large\\textcolor{{red}}{{Reason: {reason_escaped}}}\\\\[1em]
-(Original content omitted)
-\\end{{minipage}} }}
-\\vspace*{{1cm}} \\end{{center}}
-\\clearpage
-% ========== END OF CHUNK {chunk_num} PLACEHOLDER ==========
-"""
-    return placeholder
-
-def save_failed_chunk_data(chunk_num, start_page, end_page, latex_content, compile_log):
-    """Saves the LaTeX and compile log for a failed chunk."""
-    try:
-        base_name = f"failed_chunk_{chunk_num}_p{start_page}-p{end_page}"
-        failed_tex_path = FAILED_CHUNKS_DIR / f"{base_name}.tex"
-        failed_log_path = FAILED_CHUNKS_DIR / f"{base_name}.log"
-
-        if latex_content: failed_tex_path.write_text(latex_content, encoding='utf-8')
-        if compile_log: failed_log_path.write_text(compile_log, encoding='utf-8')
-        logger.info(f"Saved failed data for chunk {chunk_num} to {FAILED_CHUNKS_DIR}")
-    except Exception as e: logger.error(f"Error saving failed chunk data for chunk {chunk_num}: {e}")
-
-def read_state():
-    """Reads the processing state."""
-    # Added provider, file_ref
+def read_state(state_file_path: Path) -> Dict[str, Any]: # MODIFIED to take path
+    """Reads the processing state, converting keys back to int."""
     default_state = {
         "last_completed_chunk_index": 0,
-        "chunk_ranges": None,
         "provider": None,
-        "original_pdf_upload_ref": None, # URI (Gemini) or File ID (OpenAI) or None (Claude)
-        "preamble": None,
+        "original_pdf_upload_ref": None,
+        "successful_preambles": {}, # Dict[int, Optional[str]]
+        "successful_bodies": {}    # Dict[int, str]
     }
-    if STATE_FILE.exists():
+    if state_file_path.exists():
         try:
-            with open(STATE_FILE, 'r', encoding='utf-8') as f: state = json.load(f)
+            with open(state_file_path, 'r', encoding='utf-8') as f:
+                state = json.load(f)
             # Basic validation
             if isinstance(state.get("last_completed_chunk_index"), int):
                  logger.info(f"Loaded state: Last completed chunk index = {state['last_completed_chunk_index']}, Provider = {state.get('provider', 'N/A')}, FileRef = {state.get('original_pdf_upload_ref', 'N/A')}")
-                 # Ensure keys exist
-                 for key in default_state: state.setdefault(key, None)
-                 return state
-            else: logger.warning(f"State file {STATE_FILE} invalid format. Resetting."); return default_state
-        except Exception as e: logger.error(f"Error reading state file {STATE_FILE}: {e}. Resetting."); return default_state
+                 # Ensure keys exist and convert back to int
+                 loaded_state = default_state.copy() # Start with defaults
+                 loaded_state.update(state) # Overwrite with loaded values
+                 # Convert keys for dicts back to int
+                 loaded_state["successful_preambles"] = {int(k): v for k, v in loaded_state.get("successful_preambles", {}).items()}
+                 loaded_state["successful_bodies"] = {int(k): v for k, v in loaded_state.get("successful_bodies", {}).items()}
+                 return loaded_state
+            else:
+                logger.warning(f"State file {state_file_path} invalid format. Resetting.")
+                return default_state.copy()
+        except Exception as e:
+            logger.error(f"Error reading state file {state_file_path}: {e}. Resetting.")
+            return default_state.copy()
     logger.info("No state file found. Starting fresh.")
-    return default_state
+    return default_state.copy()
 
 def write_state(state_dict):
     """Writes the current processing state."""
@@ -1717,7 +1538,7 @@ Synthesized Preamble:
         cleaned_preamble = cleaned_preamble.split("\\begin{document}")[0].strip()
 
     # Optional: Add a comment indicating AI synthesis
-    final_preamble = f"% Preamble synthesized by AI ({provider} {model_info.get('nickname', '')})\\n" + cleaned_preamble
+    final_preamble = cleaned_preamble
     
     # Log the final synthesized preamble (first/last few lines for brevity)
     preview_lines = final_preamble.splitlines()
@@ -1727,7 +1548,7 @@ Synthesized Preamble:
     return final_preamble
 
 # --- NEW: Bibliography Extraction Helper ---
-def extract_bibliography_with_ai(
+async def extract_bibliography_with_ai( # CHANGE to async def
     original_pdf_path: Path,
     provider: str,
     model_info: Dict[str, Any]
@@ -1735,8 +1556,7 @@ def extract_bibliography_with_ai(
     """Calls the specified AI model to extract bibliography data as BibTeX.
     Returns the raw BibTeX string or None on failure.
     """
-    logger.info(f"Calling {provider} model {model_info['nickname']} for BibTeX extraction..."
-    )
+    logger.info(f"Calling {provider} model {model_info['nickname']} for BibTeX extraction...")
     model_name = model_info['name']
     raw_response = None
     start_time = time.time()
@@ -1750,138 +1570,112 @@ Format these references strictly as a BibTeX (.bib) file.
 Respond ONLY with the raw BibTeX content. Do not include any explanations, greetings, or markdown formatting like ```bibtex ... ```.
 
 Example BibTeX entry format:
-@article{{key, # Escaped outer braces
-  author  = {{Author Name}}, # Escaped inner and outer braces
+@article{{key,
+  author  = {{Author Name}},
   title   = {{Article Title}},
   journal = {{Journal Name}},
   year    = {{Year}},
   volume  = {{Volume Number}},
   pages   = {{Page Range}}
-}} # Escaped outer braces
+}}
 
 Start your response directly with the first BibTeX entry (e.g., `@article{{...`).
 """
 
-    # Use the central prompt sending function
-    # Requires uploading the full PDF for context
-    temp_file_ref: Optional[Union[glm.File, str]] = None
+    temp_file_ref: Optional[Union[genai.types.File, str]] = None
     uploaded_for_this_call = False
     try:
         provider_client = get_provider_client(provider)
         if not provider_client:
             raise ValueError(f"Could not get client for provider: {provider}")
 
-        # Upload the original PDF temporarily if not Claude
         files_for_prompt = []
+        # Call SYNC upload_pdf_to_provider
         if provider == "gemini" or provider == "openai":
-            logger.info(f"{provider.capitalize()} (BibTeX): Uploading original PDF..."
-            )
+            logger.info(f"{provider.capitalize()} (BibTeX): Uploading original PDF...")
+            # REMOVE await from call to sync helper
             temp_file_ref = upload_pdf_to_provider(original_pdf_path, provider)
             if not temp_file_ref:
                 raise RuntimeError(f"{provider.capitalize()} BibTeX PDF upload failed.")
             logger.info(f"{provider.capitalize()} (BibTeX): Upload complete.")
-            files_for_prompt.append(temp_file_ref)
-            uploaded_for_this_call = True # Mark for deletion
+            if provider == "gemini":
+                # Ensure temp_file_ref is the File object here if needed by send_prompt
+                files_for_prompt.append(temp_file_ref)
+            uploaded_for_this_call = True
         elif provider == "claude":
-            # Claude requires inline base64, prepare prompt accordingly
             logger.info("Claude (BibTeX): Reading and encoding original PDF...")
             try:
-                pdf_bytes = original_pdf_path.read_bytes()
-                pdf_base64 = base64.b64encode(pdf_bytes).decode('utf-8')
-                # Construct Claude-specific content block
+                # KEEP await asyncio.to_thread for blocking I/O
+                pdf_bytes = await asyncio.to_thread(original_pdf_path.read_bytes)
+                pdf_base64_bytes = await asyncio.to_thread(base64.b64encode, pdf_bytes)
+                pdf_base64 = pdf_base64_bytes.decode('utf-8')
                 content_blocks = [
-                     {
-                         "type": "document",
-                         "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_base64}
-                     },
-                     {
-                         "type": "text",
-                         "text": prompt # The BibTeX request prompt
-                     }
+                     {"type": "image", "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_base64}},
+                     {"type": "text", "text": prompt}
                  ]
-                # Override the simple text prompt for Claude
-                prompt = content_blocks
+                prompt = content_blocks # Update prompt for Claude
             except Exception as e_claude_encode:
                  logger.error(f"Claude (BibTeX): Failed to read/encode PDF: {e_claude_encode}")
                  raise
 
-        # Use the central function to handle API calls
+        # Call SYNC send_prompt_to_provider
+        # REMOVE await from call to sync helper
         response_data = send_prompt_to_provider(
-            prompt=prompt, # Can be string or Claude content blocks
+            prompt=prompt,
             provider=provider,
             model_info=model_info,
             client=provider_client,
             max_retries=2,
-            temperature=0.1, # Low temp for factual extraction
+            temperature=0.1,
             system_prompt="You are a bibliographic assistant. Respond ONLY with valid BibTeX.",
-            files=files_for_prompt, # Only used by Gemini currently in send_prompt
-            timeout_seconds=240 # Allow more time for full doc analysis
+            files=files_for_prompt,
+            timeout_seconds=240
         )
 
+        # Process response_data dictionary (sync)
         if response_data and response_data.get("status") == "success":
             raw_response = response_data.get("content")
-            # Basic validation: check if it looks like BibTeX
             if raw_response and "@" in raw_response[:20]:
                 logger.info(f"BibTeX extraction successful.")
             else:
-                # Rewritten logging to avoid embedding raw_response slice directly in f-string
                 log_message_prefix = "AI response received, but may not be valid BibTeX:\n"
                 response_preview = (raw_response[:200] + "...") if raw_response else "(Empty Response)"
                 logger.warning(log_message_prefix + response_preview)
-                # Decide whether to return potentially invalid response or None
-                # For now, let's return it and see if it causes issues downstream
-
             log_prompt_and_response(
-                task_id="bibliography_extraction",
-                context_id=original_pdf_path.name,
-                provider=provider,
-                model_name=model_info.get('nickname', 'default'),
-                prompt=str(prompt), # Log the text version of prompt
-                response=raw_response,
-                success=True
+                task_id="bibliography_extraction", context_id=original_pdf_path.name,
+                provider=provider, model_name=model_info.get('nickname', 'default'),
+                prompt=str(prompt), response=raw_response, success=True
             )
         else:
             err_msg = response_data.get("error_message", "Unknown error during AI call")
             logger.error(f"AI BibTeX extraction failed: {err_msg}")
             log_prompt_and_response(
-                task_id="bibliography_extraction",
-                context_id=original_pdf_path.name,
-                provider=provider,
-                model_name=model_info.get('nickname', 'default'),
-                prompt=str(prompt),
-                response=None,
-                success=False,
-                error_msg=err_msg
+                task_id="bibliography_extraction", context_id=original_pdf_path.name,
+                provider=provider, model_name=model_info.get('nickname', 'default'),
+                prompt=str(prompt), response=None, success=False, error_msg=err_msg
             )
-            raw_response = None # Ensure None is returned on failure
+            raw_response = None
 
     except Exception as e:
         logger.error(f"Exception during AI BibTeX extraction ({provider}): {e}", exc_info=True)
         log_prompt_and_response(
-            task_id="bibliography_extraction",
-            context_id=original_pdf_path.name,
-            provider=provider,
-            model_name=model_info.get('nickname', 'default'),
-            prompt=str(prompt),
-            response=None,
-            success=False,
-            error_msg=f"EXCEPTION: {e}"
+            task_id="bibliography_extraction", context_id=original_pdf_path.name,
+            provider=provider, model_name=model_info.get('nickname', 'default'),
+            prompt=str(prompt), response=None, success=False, error_msg=f"EXCEPTION: {e}"
         )
         raw_response = None
     finally:
-        # Delete the temporarily uploaded full PDF if we uploaded it here
+        # Call SYNC delete_provider_file
         if uploaded_for_this_call and temp_file_ref:
              logger.info(f"{provider.capitalize()} (BibTeX): Cleaning up temporary PDF upload...")
+             # REMOVE await from call to sync helper
              delete_provider_file(temp_file_ref, provider)
 
     elapsed = time.time() - start_time
     if raw_response:
-        logger.info(f"AI BibTeX extraction finished ({elapsed:.2f}s)."
-        )
+        logger.info(f"AI BibTeX extraction finished ({elapsed:.2f}s).")
     else:
-        logger.error(f"AI BibTeX extraction failed ({elapsed:.2f}s)."
-        )
-
+        logger.error(f"AI BibTeX extraction failed ({elapsed:.2f}s).")
     return raw_response
 
 # --- NEW: BibTeX Key Extraction Helper ---
@@ -1896,18 +1690,659 @@ def extract_bib_keys(bibtex_content: str) -> List[str]:
     logger.debug(f"Extracted {len(extracted_keys)} BibTeX keys: {extracted_keys[:10]}...")
     return extracted_keys
 
-def main(input_pdf_cli=None, requested_provider=None, requested_model_key=None):
-    global TARGET_PROVIDER, TARGET_MODEL_INFO, fallback_preamble, gemini_cache, gemini_cache_name # Ensure cache vars are accessible
+# --- NEW: Parse LLM LaTeX Output ---
+def parse_llm_latex_output(raw_latex: Optional[str], chunk_num: int, total_chunks: int) -> Tuple[Optional[str], Optional[str]]:
+    """Extracts preamble and body from raw LLM LaTeX output."""
+    if not raw_latex or not isinstance(raw_latex, str):
+        logger.warning(f"Chunk {chunk_num}/{total_chunks}: Received invalid or empty raw output for parsing.")
+        return None, None
+
+    # 1. Remove potential markdown fences
+    cleaned_latex = raw_latex.strip()
+    md_match = re.search(r"```(?:latex)?\s*(.*?)\s*```", cleaned_latex, re.DOTALL | re.IGNORECASE)
+    if md_match:
+        cleaned_latex = md_match.group(1).strip()
+        logger.debug(f"Chunk {chunk_num}: Removed markdown fences before parsing preamble/body.")
+
+    # 2. Extract Preamble (everything before \begin{document})
+    preamble: Optional[str] = None
+    body: Optional[str] = None
+    begin_doc_match = re.search(r"\\begin\{document\}", cleaned_latex, re.IGNORECASE)
+
+    if begin_doc_match:
+        preamble_end_index = begin_doc_match.start()
+        preamble = cleaned_latex[:preamble_end_index].strip()
+        # Extract Body (between \begin{document} and \end{document})
+        end_doc_match = re.search(r"\\end\{document\}", cleaned_latex[preamble_end_index:], re.IGNORECASE)
+        if end_doc_match:
+            body_start_index = begin_doc_match.end()
+            # Adjust end_doc_match index relative to the start of the body search
+            body_end_index = preamble_end_index + end_doc_match.start()
+            body = cleaned_latex[body_start_index:body_end_index].strip()
+        else:
+            # If no \end{document}, take everything after \begin{document}
+            logger.warning(f"Chunk {chunk_num}: Could not find \\\\end{{document}}. Taking all content after \\\\begin{{document}} as body.")
+            body = cleaned_latex[begin_doc_match.end():].strip()
+    else:
+        # If no \begin{document}, assume the whole thing might be body content (or just preamble?)
+        # Let's treat it as body for now, assuming preamble is less likely without begin{doc}
+        logger.warning(f"Chunk {chunk_num}: Could not find \\\\begin{{document}}. Treating entire cleaned output as body.")
+        body = cleaned_latex
+        preamble = None # Explicitly set preamble to None
+
+    # Log results
+    preamble_len = len(preamble) if preamble else 0
+    body_len = len(body) if body else 0
+    logger.debug(f"Chunk {chunk_num}: Parsed preamble ({preamble_len} chars), body ({body_len} chars).")
+
+    # Return None for body if it's empty after parsing, as it indicates failure.
+    return preamble, body if body else None
+
+# --- State Saving (Modified for Async Results) ---
+def save_state(last_completed_chunk_index: int,
+               # These dictionaries should contain ALL successful results up to this point
+               all_successful_preambles: Dict[int, Optional[str]],
+               all_successful_bodies: Dict[int, str],
+               state_file_path: Path,
+               # Pass the currently known provider and ref explicitly
+               current_provider: Optional[str],
+               current_upload_ref: Optional[str]): # Ref should be the string ID/Name
+    """Writes the current processing state, including ALL successful chunks' content."""
+    # Convert dict keys to strings for JSON compatibility
+    preambles_to_save = {str(k): v for k, v in all_successful_preambles.items()}
+    bodies_to_save = {str(k): v for k, v in all_successful_bodies.items()}
+
+    # REMOVED: Re-reading current_state here was causing overwrites.
+    # Construct state dictionary ONLY from passed arguments.
+    state_dict = {
+        "last_completed_chunk_index": last_completed_chunk_index,
+        "provider": current_provider, # Use passed provider
+        "original_pdf_upload_ref": current_upload_ref, # Use passed ref (should be string name/ID)
+        "successful_preambles": preambles_to_save,
+        "successful_bodies": bodies_to_save
+    }
+    try:
+        backup_path = state_file_path.with_suffix(".json.bak")
+        if state_file_path.exists():
+            shutil.copy2(state_file_path, backup_path)
+        with open(state_file_path, 'w', encoding='utf-8') as f:
+            json.dump(state_dict, f, indent=2)
+    except Exception as e:
+        logger.error(f"Could not write state file {state_file_path}: {e}")
+
+# --- Provider-Specific LaTeX Generation (MODIFIED TO ASYNC) ---
+
+async def get_latex_from_chunk_gemini( # MODIFIED to async
+    chunk_pdf_path: Path, # Path to the chunk PDF file
+    chunk_num: int,
+    total_chunks: int,
+    start_page: int,
+    end_page: int,
+    start_desc: str, # ADDED
+    end_desc: str, # ADDED
+    model_info: Dict[str, Any], # ADDED model_info for the specific model
+    valid_bib_keys: List[str], # ADDED
+    gemini_cache_name: Optional[str] = None # ADDED cache name
+) -> Tuple[Optional[str], bool, Optional[str]]:
+    # ... (Inner logic remains the same, but uses await for genai calls) ...
+    global gemini_client # Use the initialized client
+    if not gemini_client: # Removed check for TRANSLATION_MODEL_PRIMARY, use model_info
+        return None, False, "Gemini client not available."
+
+    model_name = model_info['name']
+    nickname = model_info['nickname']
+    page_range_str = f"Pages {start_page}-{end_page}"
+    desc_range_str = f'("{start_desc}" to "{end_desc}")'
+
+    logger.info(f"Gemini: Requesting LaTeX for Chunk {chunk_num} {desc_range_str} from {nickname} using file {chunk_pdf_path.name}...")
+
+    # --- Prompt Engineering (REVISED - Add citation instructions) ---
+    bib_key_info = "No valid citation keys were extracted." # Default message
+    if valid_bib_keys:
+         limited_keys_str = ", ".join(valid_bib_keys[:20]) + ("..." if len(valid_bib_keys) > 20 else "")
+         bib_key_info = f"The following BibTeX keys are known to be valid from the full document bibliography: [{limited_keys_str}]. Use the standard \\cite{{key}} command ONLY for these keys."
+
+    prompt_parts = [
+        f"# Task: LaTeX Translation (Chunk {chunk_num}/{total_chunks})",
+        f"Analyze the **entirety** of the provided PDF document chunk ('{chunk_pdf_path.name}').",
+        f'This chunk represents the content from a larger document starting around "{start_desc}" and ending around "{end_desc}".', # Use single quotes for outer f-string or escape inner quotes correctly
+        f'Generate a **complete and compilable English LaTeX document** corresponding *only* to the content starting from "{start_desc}" (inclusive, likely near the start of this PDF chunk) and ending at "{end_desc}" (inclusive, likely near the end of this PDF chunk).',
+        "\\n# Core Requirements:",
+        "- **Include Preamble:** Your output MUST start with `\\documentclass` and include a suitable preamble with common packages (inputenc, fontenc, amsmath, amssymb, graphicx, hyperref, etc.) and any theorem environments detected.",
+        "- **Include Metadata:** Include `\\title`, `\\author`, `\\date` based on the content, using placeholders if unclear.",
+        "- **Include Body Wrappers:** Include `\\begin{{document}}`, `\\maketitle` (if applicable) at the start, and ensure the final output includes `\\end{{document}}` at the very end.", # MODIFIED: Used literal string
+        "- **Translate:** All non-English text to English.",
+        "- **Math Accuracy:** Preserve all mathematical content accurately.",
+        "- **Structure:** Maintain semantic structure.",
+        "- **Figures/Tables:** Use placeholders like `\\includegraphics[...]{{placeholder_chunk{chunk_num}_imgX.png}}`.",
+        "- **Citations:** " + bib_key_info + " If a citation refers to a key NOT in this list, represent it textually in brackets, e.g., `[Author, Year]` or `[Reference Name]`, do NOT use the \\cite command for unknown keys.",
+        "- **Escaping:** Correctly escape special LaTeX characters in translated text only.",
+        f'- **Focus:** Generate LaTeX **only** for the content described, from "{start_desc}" to "{end_desc}". Exclude any bibliography section (e.g., \\begin{{thebibliography}}) that might appear within this chunk.',
+        "\\n# Output Format:",
+        "Provide the complete LaTeX document directly, without any surrounding markdown like ```latex ... ```."
+    ]
+    prompt = "\\n".join(prompt_parts)
+
+    # --- API Call Implementation (Upload, Call, Process, Delete) ---
+    start_time = time.time()
+    latex_output = None
+    success = False
+    error_msg = None
+    chunk_file_ref: Optional[genai.types.File] = None # Correct type hint
+
+    try:
+        # 1. Upload chunk (wrap sync upload_file in to_thread)
+        logger.debug(f"Gemini (Chunk {chunk_num}): Uploading...")
+        # Wrap sync upload_file
+        chunk_file_ref = await asyncio.to_thread(
+            genai.upload_file, path=str(chunk_pdf_path), display_name=f"chunk_{chunk_num}_{chunk_pdf_path.name}"
+        )
+        while chunk_file_ref.state.name == "PROCESSING":
+            # Use await asyncio.sleep
+            await asyncio.sleep(5)
+            # Wrap sync get_file
+            chunk_file_ref = await asyncio.to_thread(genai.get_file, name=chunk_file_ref.name)
+        if chunk_file_ref.state.name == "FAILED":
+            raise RuntimeError(f"Gemini file upload failed processing: {chunk_file_ref.name}")
+        logger.debug(f"Gemini (Chunk {chunk_num}): Upload OK: {chunk_file_ref.name}")
+
+        # 2. Prep model & config
+        model_instance = genai.GenerativeModel(model_name)
+        generation_config=genai.types.GenerationConfig(temperature=0.3)
+        safety_settings = [{"category": c, "threshold": "BLOCK_MEDIUM_AND_ABOVE"} for c in ["HARM_CATEGORY_DANGEROUS_CONTENT"]]
+
+        # 3. Call API (wrap sync generate_content)
+        logger.debug(f"Gemini (Chunk {chunk_num}): Sending prompt...")
+        # Wrap sync generate_content
+        response = await asyncio.to_thread(
+            model_instance.generate_content,
+            [chunk_file_ref, prompt],
+            generation_config=generation_config,
+            safety_settings=safety_settings,
+            request_options={'timeout': 300}
+        )
+
+        # 4. Process response
+        if response.prompt_feedback and response.prompt_feedback.block_reason:
+            error_msg = f"Gemini prompt blocked: {response.prompt_feedback.block_reason}"
+            success = False
+        elif response.parts:
+            latex_output = "".join(part.text for part in response.parts if hasattr(part, 'text')).strip()
+            success = bool(latex_output)
+            if not success: error_msg = "Gemini returned empty response."
+        else:
+            finish_reason = response.candidates[0].finish_reason.name if response.candidates else "UNKNOWN"
+            error_msg = f"Gemini returned no usable parts. Finish Reason: {finish_reason}"
+            success = False
+
+    except Exception as e:
+        error_msg = f"Error during Gemini API call for chunk {chunk_num}: {e}"
+        logger.error(error_msg, exc_info=True)
+        success = False
+        latex_output = None
+
+    finally:
+        # 5. Delete uploaded chunk (use async delete helper)
+        if chunk_file_ref:
+            # KEEP await asyncio.to_thread for the sync delete helper
+            await asyncio.to_thread(delete_provider_file, chunk_file_ref, "gemini")
+
+    elapsed = time.time() - start_time
+    logger.info(f"Gemini (Chunk {chunk_num}): API call finished in {elapsed:.2f}s. Success: {success}")
+    log_prompt_and_response(chunk_num, page_range_str, "gemini", f"{nickname} ({model_name})", prompt, latex_output if success else error_msg, success, error_msg if not success else None)
+    return latex_output, success, error_msg
+
+async def get_latex_from_chunk_openai( # MODIFIED to async
+    chunk_pdf_path: Path,
+    chunk_num: int,
+    total_chunks: int,
+    start_page: int,
+    end_page: int,
+    start_desc: str,
+    end_desc: str,
+    model_info: Dict[str, Any],
+    valid_bib_keys: List[str] # ADDED
+) -> Tuple[Optional[str], bool, Optional[str]]:
+    # ... (Inner logic remains the same, but uses await for openai calls) ...
+    global openai_client # Use initialized client
+    if not openai_client:
+        return None, False, "OpenAI client not available."
+
+    model_name = model_info['name']
+    nickname = model_info['nickname']
+    page_range_str = f"Pages {start_page}-{end_page}"
+    desc_range_str = f'("{start_desc}" to "{end_desc}")'
+
+    logger.info(f"OpenAI: Requesting LaTeX for Chunk {chunk_num} {desc_range_str} from {nickname} using file {chunk_pdf_path.name}...")
+
+    # --- Prompt Engineering --- (Add citation instructions)
+    bib_key_info = "No valid citation keys were extracted." # Default message
+    if valid_bib_keys:
+         limited_keys_str = ", ".join(valid_bib_keys[:20]) + ("..." if len(valid_bib_keys) > 20 else "")
+         bib_key_info = f"Valid BibTeX keys: [{limited_keys_str}]. Use \\cite{{key}} ONLY for these keys."
+
+    # Update template to include bib_key_info dynamically
+    user_prompt_text_template = f"""# Task: LaTeX Translation (Chunk {{chunk_num}}/{{total_chunks}})
+Analyze the **entirety** of the provided PDF document chunk (uploaded as file ID {{CHUNK_FILE_ID_PLACEHOLDER}}).
+This chunk represents the content from a larger document starting around "{{start_desc}}" and ending around "{{end_desc}}".
+Generate a **complete and compilable English LaTeX document** corresponding *only* to the content starting from "{{start_desc}}" (inclusive, likely near the start of this PDF chunk) and ending at "{{end_desc}}" (inclusive, likely near the end of this PDF chunk).
+
+# Core Requirements:
+- **Include Preamble:** Start with `\\documentclass` and include a suitable preamble (common packages, theorems).
+- **Include Metadata:** Include `\\title`, `\\author`, `\\date` based on content.
+- **Include Body Wrappers:** Include `\\begin{{document}} `, `\\maketitle` (if applicable), and `\\end{{document}}` at the very end. # MODIFIED: Used literal string
+- **Translate:** Non-English text to English.
+- **Math Accuracy:** Preserve math accurately.
+- **Structure:** Maintain semantic structure.
+- **Figures/Tables:** Use placeholders like `placeholder_chunk{{chunk_num}}_imgX.png`.
+- **Citations:** {bib_key_info} If citing a key NOT in this list, use a textual placeholder like `[Author, Year]` instead of \\cite.
+- **Escaping:** Escape special LaTeX characters in text.
+- **Focus:** Generate LaTeX **only** for content from "{{start_desc}}" to "{{end_desc}}". Exclude any bibliography section (e.g., \\begin{{thebibliography}}).
+
+# Output Format:
+Provide the complete LaTeX document directly, without markdown formatting like ```latex ... ```."""
+
+    # Format the template with actual chunk info
+    formatted_prompt_template = user_prompt_text_template.format(
+        chunk_num=chunk_num,
+        total_chunks=total_chunks,
+        start_desc=start_desc,
+        end_desc=end_desc,
+        bib_key_info=bib_key_info,
+        CHUNK_FILE_ID_PLACEHOLDER="{CHUNK_FILE_ID_PLACEHOLDER}" # Keep placeholder
+    )
+
+    # --- API Call Implementation ---
+    start_time = time.time()
+    latex_output = None
+    success = False
+    error_msg = None
+    chunk_file_id: Optional[str] = None # OpenAI uses file ID string
+
+    try:
+        # 1. Upload the chunk PDF (wrap sync create in to_thread)
+        logger.debug(f"OpenAI (Chunk {chunk_num}): Uploading chunk file {chunk_pdf_path.name}...")
+        with open(chunk_pdf_path, "rb") as f:
+            # Assuming client.files.create is sync based on typical SDKs
+            response_upload = await asyncio.to_thread(openai_client.files.create, file=f, purpose="user_data")
+        chunk_file_id = response_upload.id
+        logger.debug(f"OpenAI (Chunk {chunk_num}): Chunk upload successful: {chunk_file_id}")
+
+        # 2. Finalize prompt with file ID
+        final_user_prompt = formatted_prompt_template.replace("{CHUNK_FILE_ID_PLACEHOLDER}", chunk_file_id)
+
+        # 3. Construct messages payload
+        messages = [
+             {"role": "system", "content": "You are an expert LaTeX translator. Generate complete, compilable LaTeX documents based on the provided PDF content and instructions. Output only the raw LaTeX code."},
+             {"role": "user", "content": final_user_prompt}
+         ]
+
+        # 4. Make the API call (use await completions.create)
+        logger.debug(f"OpenAI (Chunk {chunk_num}): Sending prompt to {nickname}...")
+        response = await openai_client.chat.completions.create(
+             model=model_name,
+             messages=messages,
+             max_tokens=4096,
+             temperature=0.3,
+             timeout=300.0
+         )
+
+        # 5. Process the response
+        if response.choices and response.choices[0].message and response.choices[0].message.content:
+             latex_output = response.choices[0].message.content.strip()
+             if latex_output:
+                 logger.info(f"OpenAI (Chunk {chunk_num}): Received {len(latex_output)} chars of LaTeX.")
+                 success = True
+             else:
+                 error_msg = "OpenAI returned empty content."
+                 logger.warning(f"OpenAI (Chunk {chunk_num}): {error_msg}")
+                 success = False
+        else:
+             finish_reason = response.choices[0].finish_reason if response.choices else "N/A"
+             error_msg = f"OpenAI returned no usable content. Finish Reason: {finish_reason}"
+             logger.warning(f"OpenAI (Chunk {chunk_num}): {error_msg}")
+             success = False
+
+    except Exception as e:
+        error_msg = f"Error during OpenAI API call for chunk {chunk_num}: {e}"
+        logger.error(error_msg, exc_info=True)
+        success = False
+        latex_output = None
+
+    finally:
+        # 6. Delete the uploaded chunk PDF (use async delete helper)
+        if chunk_file_id:
+            await delete_provider_file(chunk_file_id, "openai")
+
+    elapsed = time.time() - start_time
+    logger.info(f"OpenAI (Chunk {chunk_num}): API call finished in {elapsed:.2f}s. Success: {success}")
+    log_prompt_and_response(chunk_num, page_range_str, "openai", f"{nickname} ({model_name})", formatted_prompt_template.replace("{CHUNK_FILE_ID_PLACEHOLDER}", chunk_file_id or "<upload failed>"), latex_output if success else error_msg, success, error_msg if not success else None)
+    return latex_output, success, error_msg
+
+async def get_latex_from_chunk_claude( # MODIFIED to async
+    chunk_pdf_path: Path,
+    chunk_num: int,
+    total_chunks: int,
+    start_page: int,
+    end_page: int,
+    start_desc: str,
+    end_desc: str,
+    model_info: Dict[str, Any],
+    valid_bib_keys: List[str] # ADDED
+) -> Tuple[Optional[str], bool, Optional[str]]:
+    # ... (Inner logic remains the same, but uses await for anthropic calls) ...
+    global anthropic_client # Use initialized client
+    if not anthropic_client:
+        return None, False, "Anthropic client not available."
+
+    model_name = model_info['name']
+    nickname = model_info['nickname']
+    page_range_str = f"Pages {start_page}-{end_page}"
+    desc_range_str = f'("{start_desc}" to "{end_desc}")'
+
+    logger.info(f"Claude: Requesting LaTeX for Chunk {chunk_num} {desc_range_str} from {nickname}...using chunk file {chunk_pdf_path.name}...")
+
+    # --- Read chunk PDF and base64 encode (use to_thread) ---
+    pdf_base64 = None
+    media_type = "application/pdf"
+    try:
+        pdf_bytes = await asyncio.to_thread(chunk_pdf_path.read_bytes)
+        pdf_base64_bytes = await asyncio.to_thread(base64.b64encode, pdf_bytes)
+        pdf_base64 = pdf_base64_bytes.decode('utf-8')
+        logger.debug(f"Claude (Chunk {chunk_num}): PDF encoded ({len(pdf_bytes) / 1024:.1f} KB).")
+        if len(pdf_base64) > 15 * 1024 * 1024: # Increased limit slightly, check Claude docs
+             logger.warning(f"Claude (Chunk {chunk_num}): Base64 encoded PDF is large ({len(pdf_base64)/1024**2:.1f} MB). May hit limits.")
+    except Exception as e:
+        logger.error(f"Claude (Chunk {chunk_num}): Failed to read/encode PDF chunk: {e}")
+        return None, False, f"Failed to read/encode PDF chunk: {e}"
+
+    # --- Prompt Engineering --- (Add citation instructions)
+    bib_key_info = "No valid citation keys were extracted."
+    if valid_bib_keys:
+         limited_keys_str = ", ".join(valid_bib_keys[:20]) + ("..." if len(valid_bib_keys) > 20 else "")
+         bib_key_info = f"Valid BibTeX keys: [{limited_keys_str}]. Use \\cite{{key}} ONLY for these keys."
+
+    user_prompt_text = f"""# Task: LaTeX Translation (Chunk {chunk_num}/{total_chunks})
+Analyze the **entirety** of the provided PDF document chunk (content included in this message).
+This chunk represents the content from a larger document starting around "{start_desc}" and ending around "{end_desc}".
+Generate a **complete and compilable English LaTeX document** corresponding *only* to the content starting from "{start_desc}" (inclusive, likely near the start of this PDF chunk) and ending at "{end_desc}" (inclusive, likely near the end of this PDF chunk).
+
+# Core Requirements:
+- **Include Preamble:** Your output MUST start with `\\documentclass` and include a suitable preamble (common packages, theorems).
+- **Include Metadata:** Include `\\title`, `\\author`, `\\date` based on content.
+- **Include Body Wrappers:** Include `\\begin{{document}}`, `\\maketitle` (if applicable), and `\\end{{document}}` at the very end. # MODIFIED: Used literal string
+- **Translate:** Non-English text to English.
+- **Math Accuracy:** Preserve math accurately.
+- **Structure:** Maintain semantic structure.
+- **Figures/Tables:** Use placeholders like `placeholder_chunk{chunk_num}_imgX.png`.
+- **Citations:** {bib_key_info} If citing a key NOT in this list, use a textual placeholder like `[Author, Year]` instead of \\cite.
+- **Escaping:** Escape special LaTeX characters in text.
+- **Focus:** Generate LaTeX **only** for content from "{start_desc}" to "{end_desc}". Exclude any bibliography section (e.g., \\begin{{thebibliography}}).
+
+# Output Format:
+Provide the complete LaTeX document directly, without any surrounding markdown like ```latex ... ```."""
+
+    # --- API Call Implementation ---
+    start_time = time.time()
+    latex_output = None
+    success = False
+    error_msg = None
+
+    try:
+        # 1. Construct messages payload
+        # Claude vision models expect image type for PDFs
+        content_blocks = [
+             {
+                 "type": "image",
+                 "source": {"type": "base64", "media_type": media_type, "data": pdf_base64}
+             },
+             {
+                 "type": "text",
+                 "text": user_prompt_text
+             }
+         ]
+        messages = [{"role": "user", "content": content_blocks}]
+
+        # 2. Make the API call (use await messages.create)
+        logger.debug(f"Claude (Chunk {chunk_num}): Sending prompt to {nickname}...")
+        response = await asyncio.to_thread(
+            anthropic_client.messages.create,
+             model=model_name,
+             max_tokens=4096,
+             messages=messages,
+             system="You are an expert LaTeX translator. Generate complete, compilable LaTeX documents based on the provided PDF content and instructions. Output only the raw LaTeX code.",
+             temperature=0.3
+         ) # KEEP await/to_thread
+
+        # 3. Process the response
+        if response.content and isinstance(response.content, list) and response.content[0].type == "text":
+            latex_output = response.content[0].text.strip()
+            if latex_output:
+                logger.info(f"Claude (Chunk {chunk_num}): Received {len(latex_output)} chars of LaTeX.")
+                success = True
+            else:
+                error_msg = "Claude returned empty text content."
+                logger.warning(f"Claude (Chunk {chunk_num}): {error_msg}")
+                success = False
+        elif response.stop_reason == 'error':
+            api_error_details = getattr(response, 'error', None)
+            error_msg = f"Claude API error. Stop Reason: {response.stop_reason}. Details: {api_error_details}"
+            logger.error(f"Claude (Chunk {chunk_num}): {error_msg}")
+            success = False
+        else:
+            error_msg = f"Claude returned unexpected content structure or stop reason: {response.stop_reason}"
+            logger.warning(f"Claude (Chunk {chunk_num}): {error_msg}")
+            success = False
+
+    except Exception as e:
+        error_msg = f"Error during Claude API call for chunk {chunk_num}: {e}"
+        logger.error(error_msg, exc_info=True)
+        success = False
+        latex_output = None
+
+    elapsed = time.time() - start_time
+    logger.info(f"Claude (Chunk {chunk_num}): API call finished in {elapsed:.2f}s. Success: {success}")
+    log_prompt_and_response(chunk_num, page_range_str, "claude", f"{nickname} ({model_name})", user_prompt_text, latex_output if success else error_msg, success, error_msg if not success else None)
+    return latex_output, success, error_msg
+
+# ... (compile_latex, create_chunk_failure_placeholder, save_failed_chunk_data remain synchronous) ...
+# ... (read_state is already updated) ...
+
+def compile_latex(
+    tex_filepath: Path,
+    aux_dir: Path,
+    main_bib_file_path: Optional[Path] = None, # ADDED argument
+    num_runs: int = 2,
+    timeout: int = 120
+) -> Tuple[bool, str, Optional[Path]]:
+    """Compile a LaTeX file using pdflatex, including bibtex run if main_bib_file_path exists. Returns success, log, and path to PDF if successful."""
+    tex_filepath = Path(tex_filepath)
+    if not tex_filepath.is_file():
+        return False, f"Error: LaTeX source file not found: {tex_filepath}", None
+
+    aux_dir = Path(aux_dir)
+    aux_dir.mkdir(parents=True, exist_ok=True)
+    base_name = tex_filepath.stem
+    log_file = aux_dir / f"{base_name}.log"
+    pdf_file = aux_dir / f"{base_name}.pdf"
+    aux_file = aux_dir / f"{base_name}.aux" # Path to aux file
+
+    # Use the provided main_bib_file_path directly to check existence
+    bib_file_exists = main_bib_file_path and main_bib_file_path.exists()
+
+    # Clean previous auxiliary files for this specific compilation run
+    logger.debug(f"Cleaning aux files for {base_name} in {aux_dir}")
+    for pattern in [f"{base_name}.aux", f"{base_name}.log", f"{base_name}.toc", f"{base_name}.out", f"{base_name}.synctex.gz", f"{base_name}.pdf", f"{base_name}.fls", f"{base_name}.fdb_latexmk", f"{base_name}.bbl", f"{base_name}.blg"]: # Added bbl/blg
+        try:
+            p = aux_dir / pattern
+            if p.exists(): p.unlink()
+        except OSError as e: logger.warning(f"Could not delete potential aux file {p}: {e}")
+
+    full_log = f"--- Compiling: {tex_filepath.name} in {aux_dir.name} ---\n"
+    success = False
+    final_pdf_path = None
+    bibtex_run_occurred = False # Renamed from bibtex_run_needed for clarity
+
+    # Determine required runs (need 1 initial, 1 bibtex if needed, 1-2 final)
+    max_passes = num_runs + (1 if bib_file_exists else 0)
+
+    for i in range(max_passes + 1): # Iterate enough times
+        pass_num = i + 1
+        is_bibtex_run = False # Flag to check if this pass is bibtex
+        run_cwd = None # Default CWD
+
+        # --- Decide action for this pass ---
+        if pass_num == 1:
+             command = [ "pdflatex", "-interaction=nonstopmode", "-file-line-error", "-halt-on-error", f"-output-directory={str(aux_dir.resolve())}", str(tex_filepath.resolve()) ]
+             current_pass_desc = f"Initial pdflatex (Pass {pass_num})"
+        elif pass_num == 2 and aux_file.exists() and bib_file_exists and not bibtex_run_occurred:
+             command = [ "bibtex", str(aux_file.resolve().stem) ]
+             run_cwd = aux_dir.resolve()
+             is_bibtex_run = True
+             bibtex_run_occurred = True
+             current_pass_desc = f"BibTeX (Pass {pass_num})"
+        elif pass_num >= 2:
+             command = [ "pdflatex", "-interaction=nonstopmode", "-file-line-error", "-halt-on-error", f"-output-directory={str(aux_dir.resolve())}", str(tex_filepath.resolve()) ]
+             current_pass_desc = f"Post-BibTeX pdflatex (Pass {pass_num})"
+             if pass_num > max_passes:
+                 full_log += f"\n--- Completed {max_passes} compilation passes. Stopping. ---"
+                 break
+        else:
+             full_log += f"\n--- Skipping unexpected pass logic state {pass_num} ---"
+             continue
+
+        full_log += f"\n--- {current_pass_desc} ---\nRun: {' '.join(command)}\nCWD: {run_cwd or '.'}\n"
+        start_time = time.time()
+        process = None
+        try:
+            process = subprocess.run(
+                 command, capture_output=True, text=True, encoding='utf-8', errors='replace',
+                 timeout=timeout, check=False, cwd=run_cwd
+            )
+            elapsed = time.time() - start_time
+            full_log += f"Pass {pass_num} completed in {elapsed:.2f}s. Return Code: {process.returncode}\n"
+            stdout_snippet = process.stdout[-1000:].strip() if process.stdout else ""
+            stderr_snippet = process.stderr.strip() if process.stderr else ""
+            if stdout_snippet: full_log += f"Stdout (last 1k):\n{stdout_snippet}\n...\n"
+            if stderr_snippet: full_log += f"Stderr:\n{stderr_snippet}\n"
+
+            log_content = ""
+            errors_found_in_log = []
+            if log_file.exists() and not is_bibtex_run:
+                try:
+                    log_content = log_file.read_text(encoding='utf-8', errors='replace')
+                    fatal_errors = re.findall(r"^! ", log_content, re.MULTILINE)
+                    undefined_errors = re.findall(r"Undefined control sequence", log_content)
+                    missing_file_errors = re.findall(r"LaTeX Error: File `.*?' not found", log_content)
+                    errors_found_in_log = fatal_errors + undefined_errors + missing_file_errors
+                except Exception as log_read_e:
+                    full_log += f"\n--- Error reading log file {log_file}: {log_read_e} ---"
+            elif process.returncode != 0 and not is_bibtex_run:
+                 full_log += f"\n--- Log file not found after {current_pass_desc} exited with code {process.returncode}. Assuming failure. ---"
+                 success = False
+                 break
+
+            if errors_found_in_log:
+                full_log += f"\n--- LaTeX Error(s) detected in log ({current_pass_desc}): {errors_found_in_log[:5]}... ---"
+                success = False
+                break
+            elif process.returncode != 0:
+                if is_bibtex_run:
+                     blg_file = aux_dir / f"{base_name}.blg"
+                     blg_content = ""
+                     if blg_file.exists():
+                          try: blg_content = blg_file.read_text(encoding='utf-8', errors='replace')[-1000:]
+                          except Exception as e_blg: blg_content = f"(Error reading .blg: {e_blg})"
+                     full_log += f"\n--- Warning: BibTeX exited with code {process.returncode}. Log:\n{stdout_snippet}\n{stderr_snippet}\n{blg_content}\n---"
+                else:
+                    if pass_num >= max_passes:
+                        full_log += f"\n--- {current_pass_desc} exited with code {process.returncode} on final pass. Failure. ---"
+                        success = False
+                        break
+                    else:
+                        full_log += f"\n--- {current_pass_desc} exit code {process.returncode} on pass {pass_num}. Continuing. ---"
+            elif not is_bibtex_run:
+                 full_log += f"\n--- {current_pass_desc} completed successfully (Exit code 0). ---"
+                 if pass_num >= max_passes:
+                      if pdf_file.is_file() and pdf_file.stat().st_size > 100:
+                           success = True
+                           final_pdf_path = pdf_file
+                           full_log += f"\n--- PDF file {pdf_file.name} generated successfully. ---"
+                      else:
+                           full_log += f"\n--- Compilation finished, but PDF file {pdf_file.name} is missing or empty. ---"
+                           success = False
+                      break
+
+        except FileNotFoundError:
+            full_log += f"\nError: '{command[0]}' command not found. Is LaTeX installed and in PATH?\n"
+            success = False
+            break
+        except subprocess.TimeoutExpired:
+            elapsed = time.time() - start_time
+            full_log += f"\nError: {command[0]} timed out after {timeout}s ({current_pass_desc}, Runtime {elapsed:.1f}s).\n"
+            success = False
+            break
+        except Exception as e:
+            elapsed = time.time() - start_time
+            full_log += f"\nError running {command[0]} ({current_pass_desc}, Runtime {elapsed:.1f}s): {e}\n"
+            success = False
+            break
+
+        if not success and not is_bibtex_run and (errors_found_in_log or (process and process.returncode != 0 and pass_num >= max_passes)):
+             full_log += f"\n--- Stopping compilation due to failure in pass {pass_num} ({current_pass_desc}) ---"
+             break
+
+    if success and final_pdf_path:
+        logger.info(f"Compilation successful: {tex_filepath.name} -> {final_pdf_path.name}")
+    else:
+        logger.error(f"Compilation FAILED: {tex_filepath.name}")
+        fail_log_path = aux_dir / f"{base_name}_compile_fail.log"
+        try:
+            fail_log_path.write_text(full_log, encoding='utf-8')
+            logger.error(f"Detailed compilation log saved to: {fail_log_path}")
+        except Exception as e_write:
+            logger.error(f"Could not write detailed failure log to {fail_log_path}: {e_write}")
+
+    return success, full_log, final_pdf_path
+
+def create_chunk_failure_placeholder(chunk_num: int, start_page: int, end_page: int, reason: str) -> str:
+    """Generates a LaTeX placeholder for a failed chunk."""
+    reason_escaped = reason.replace('_', '\\_').replace('%', '\\%').replace('&', '\\&')
+    placeholder = f"""
+% ========== CHUNK {chunk_num} (Pages {start_page}-{end_page}): FAILED ==========
+\\clearpage
+\\begin{{center}} \\vspace*{{1cm}}
+\\fbox{{ \\begin{{minipage}}{{0.85\\textwidth}} \\centering
+\\Large\\textbf{{Chunk {chunk_num} (Pages {start_page}-{end_page}): Translation/Compilation Failed}}\\\\[1em]
+\\large\\textcolor{{red}}{{Reason: {reason_escaped}}}\\\\[1em]
+(Original content omitted)
+\\end{{minipage}} }}
+\\vspace*{{1cm}} \\end{{center}}
+\\clearpage
+% ========== END OF CHUNK {chunk_num} PLACEHOLDER ==========
+"""
+    return placeholder
+
+
+# --- Custom Exceptions ---
+class ChunkProcessingError(Exception):
+    """Custom exception for errors during chunk processing."""
+    pass
+
+async def main(input_pdf_cli=None, requested_provider=None, requested_model_key=None):
+    global TARGET_PROVIDER, TARGET_MODEL_INFO, fallback_preamble, gemini_cache, gemini_cache_name, state # Make state global? Or pass around? Let's pass for now.
 
     start_time_main = time.time()
     logger.info("="*60)
-    logger.info(f"--- Starting PDF to LaTeX Conversion ---")
+    logger.info(f"--- Starting PDF to LaTeX Conversion (Async) ---")
     logger.info(f"Timestamp: {datetime.now().isoformat()}")
     logger.info("="*60)
 
     # --- Setup ---
+    # Ensure clients are set up first (still sync for now)
     if not setup_clients(): return
-    if not setup_target_provider_and_model(requested_provider, requested_model_key): return
+    # Setup target provider (needs to be sync or awaited)
+    if not await setup_target_provider_and_model(requested_provider, requested_model_key): return
 
     INPUT_PDF_PATH_ACTUAL = Path(input_pdf_cli if input_pdf_cli else INPUT_PDF_PATH).resolve()
     logger.info(f"Input PDF: {INPUT_PDF_PATH_ACTUAL}")
@@ -1928,69 +2363,78 @@ def main(input_pdf_cli=None, requested_provider=None, requested_model_key=None):
     final_output_filename_base = f"{INPUT_PDF_PATH_ACTUAL.stem}_translated"
     FINAL_TEX_FILE = WORKING_DIR / f"{final_output_filename_base}.tex"
     FINAL_PDF_FILE = WORKING_DIR / f"{final_output_filename_base}.pdf"
-
-    # --- Provider-Specific Page Limit Check ---
-    page_limit = None # Currently only used for informative error message
-    if TARGET_PROVIDER == "gemini": page_limit = 150 # Rough estimate, check docs
-    elif TARGET_PROVIDER == "openai": page_limit = 80 # Rough estimate, check docs
-    elif TARGET_PROVIDER == "claude": page_limit = 100 # Rough estimate, check docs
-
-    # Note: This check is currently only informative. The script processes chunks,
-    # so the main limit is per-chunk API limits, not total pages for the script itself.
-    if page_limit and total_pages > page_limit:
-         logger.warning(f"Warning: Input PDF has {total_pages} pages, which might exceed typical single-call limits for {TARGET_PROVIDER}, but script will process in chunks.")
-         # return # Don't exit, just warn
+    STATE_FILE = WORKING_DIR / "state.json" # Ensure STATE_FILE is defined before read_state
 
     # --- State and Chunk Management ---
-    state = read_state()
-    chunk_definition_file = WORKING_DIR / "chunk-division.txt"
-
+    state = read_state(STATE_FILE) # Correct call
+    successful_preambles = state.get("successful_preambles", {})
+    successful_bodies = state.get("successful_bodies", {})
     last_completed_chunk_index = state.get("last_completed_chunk_index", 0)
-    chunk_definitions = None
-    original_pdf_upload_ref = state.get("original_pdf_upload_ref", None)
+    # ... other setup ...
 
-    # --- Step 1: Upload Full PDF & Create Cache (If needed) --- 
-    # Caching logic is simplified/commented out as it needs more provider-specific implementation details
+    # --- RE-INSERTED: Step 1: Upload Full PDF & Handle State --- 
+    original_pdf_upload_ref = state.get("original_pdf_upload_ref", None)
+    provider_in_state = state.get("provider")
     gemini_cache = None
     gemini_cache_name = None
-    # Re-establish Gemini file object from state if resuming
-    if TARGET_PROVIDER == "gemini" and isinstance(original_pdf_upload_ref, str):
-         try:
-             logger.info(f"Gemini: Attempting to retrieve file object for {original_pdf_upload_ref}...")
-             original_pdf_upload_ref = genai.get_file(name=original_pdf_upload_ref) # Try to get the File object
-             logger.info(f"Gemini: Retrieved file object: {original_pdf_upload_ref.name}")
-         except Exception as e_get:
-             logger.error(f"Gemini: Could not retrieve file object '{original_pdf_upload_ref}' from state. Upload may be orphaned: {e_get}")
-             original_pdf_upload_ref = None # Reset if retrieval fails
 
-    if TARGET_PROVIDER in ["gemini", "openai"] and not original_pdf_upload_ref:
+    # Ensure provider consistency or reset
+    if provider_in_state and provider_in_state != TARGET_PROVIDER:
+        logger.warning(f"Provider changed from '{provider_in_state}' to '{TARGET_PROVIDER}'. Resetting state and potentially orphaned file ref.")
+        original_pdf_upload_ref = None # Clear ref as it belongs to old provider
+        last_completed_chunk_index = 0
+        successful_preambles = {}
+        successful_bodies = {}
+        state = {"last_completed_chunk_index": 0, "provider": TARGET_PROVIDER, "original_pdf_upload_ref": None, "successful_preambles": {}, "successful_bodies": {}}
+        save_state(last_completed_chunk_index, successful_preambles, successful_bodies, STATE_FILE, TARGET_PROVIDER, original_pdf_upload_ref) # Save reset state
+    else:
+        # Re-establish Gemini file object from state if resuming with Gemini
+        if TARGET_PROVIDER == "gemini" and isinstance(original_pdf_upload_ref, str):
+             try:
+                 logger.info(f"Gemini: Attempting to retrieve file object for {original_pdf_upload_ref}...")
+                 # Use sync get_file, no await needed as main is async but get_file is sync
+                 original_pdf_upload_ref = genai.get_file(name=original_pdf_upload_ref)
+                 logger.info(f"Gemini: Retrieved file object: {original_pdf_upload_ref.name}")
+             except Exception as e_get:
+                 logger.error(f"Gemini: Could not retrieve file object '{original_pdf_upload_ref}' from state. Will re-upload. Error: {e_get}")
+                 original_pdf_upload_ref = None # Reset if retrieval fails
+
+    # Upload if needed
+    upload_needed = False
+    if TARGET_PROVIDER == "gemini" and not isinstance(original_pdf_upload_ref, genai.types.File):
+        upload_needed = True
+    elif TARGET_PROVIDER == "openai" and not isinstance(original_pdf_upload_ref, str):
+        upload_needed = True
+    elif TARGET_PROVIDER == "claude":
+        # Claude never stores a persistent ref
+        if original_pdf_upload_ref: original_pdf_upload_ref = None # Clear any old ref
+
+    if upload_needed and TARGET_PROVIDER != "claude":
         logger.info(f"Uploading full PDF for {TARGET_PROVIDER}...")
+        # Call sync upload function directly, no await
         uploaded_ref = upload_pdf_to_provider(INPUT_PDF_PATH_ACTUAL, TARGET_PROVIDER)
         if not uploaded_ref:
             logger.critical(f"Failed to upload PDF via {TARGET_PROVIDER}. Cannot proceed.")
             return
-        original_pdf_upload_ref = uploaded_ref # Store the actual object/ID
-        # Store appropriate ref in state
-        if isinstance(original_pdf_upload_ref, glm.File): state["original_pdf_upload_ref"] = original_pdf_upload_ref.name
-        elif isinstance(original_pdf_upload_ref, str): state["original_pdf_upload_ref"] = original_pdf_upload_ref
+        original_pdf_upload_ref = uploaded_ref
+        # Update state immediately after successful upload
         state["provider"] = TARGET_PROVIDER
-        write_state(state)
+        ref_to_store = None
+        if isinstance(original_pdf_upload_ref, genai.types.File): ref_to_store = original_pdf_upload_ref.name
+        elif isinstance(original_pdf_upload_ref, str): ref_to_store = original_pdf_upload_ref
+        state["original_pdf_upload_ref"] = ref_to_store
+        # CORRECTED CALL: Pass ref_to_store (string) instead of original_pdf_upload_ref (object)
+        save_state(last_completed_chunk_index, successful_preambles, successful_bodies, STATE_FILE, TARGET_PROVIDER, ref_to_store)
+    elif TARGET_PROVIDER == "claude" and state.get("provider") != "claude":
+         # Ensure state reflects Claude provider if starting fresh or switching
+         state["provider"] = TARGET_PROVIDER
+         state["original_pdf_upload_ref"] = None # Claude has no ref to store
+         # CORRECTED CALL: Pass None for ref_to_store
+         save_state(last_completed_chunk_index, successful_preambles, successful_bodies, STATE_FILE, TARGET_PROVIDER, None)
 
-    # Simplified Cache Handling (Commented Out - requires genai library updates/review)
-    # if TARGET_PROVIDER == "gemini" and isinstance(original_pdf_upload_ref, glm.File) and TARGET_MODEL_INFO.get("supports_cache"):
-    #     logger.info(f"Gemini: Checking/Creating cache for file {original_pdf_upload_ref.name}...")
-    #     # Implement proper cache checking and creation here using latest genai methods
-    #     # gemini_cache_name = find_or_create_cache(...)
-    #     pass # Placeholder
-    elif TARGET_PROVIDER == "claude":
-         # Ensure state reflects Claude provider if starting fresh
-         if last_completed_chunk_index == 0 and state.get("provider") != "claude":
-             state["provider"] = TARGET_PROVIDER
-             state["original_pdf_upload_ref"] = None
-             write_state(state)
-
-    # --- Step 2: Determine Chunk Definitions --- 
-    ai_chunk_definitions_raw = None
+    # --- RE-INSERTED: Step 2: Determine Chunk Definitions --- 
+    chunk_definition_file = WORKING_DIR / "chunk-division.txt"
+    chunk_definitions = None
     if chunk_definition_file.exists() and last_completed_chunk_index > 0:
         logger.info(f"Resuming: Loading chunk definitions from {chunk_definition_file}")
         try:
@@ -2005,29 +2449,32 @@ def main(input_pdf_cli=None, requested_provider=None, requested_model_key=None):
         ai_chunk_definitions_raw = get_chunk_definitions_from_ai(INPUT_PDF_PATH_ACTUAL, TARGET_PROVIDER, TARGET_MODEL_INFO)
         parsed_ai_data = None
         if ai_chunk_definitions_raw:
-            try: 
-                # Handle potential markdown fences around JSON
+            try:
                 json_match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", ai_chunk_definitions_raw, re.DOTALL)
-                if json_match:
-                    json_str = json_match.group(1)
-                else:
-                    json_str = ai_chunk_definitions_raw # Assume raw response is JSON
+                if json_match: json_str = json_match.group(1)
+                else: json_str = ai_chunk_definitions_raw
                 parsed_ai_data = json.loads(json_str)
             except json.JSONDecodeError as json_e:
                 logger.error(f"AI returned invalid JSON for chunk definitions: {json_e}")
                 logger.debug(f"Raw AI response for chunk def:\n{ai_chunk_definitions_raw}")
-        # Pass potentially parsed data (or None) to saving/fallback function
+
         chunk_definitions = determine_and_save_chunk_definitions(
             INPUT_PDF_PATH_ACTUAL, total_pages, TARGET_PAGES_PER_CHUNK,
             TARGET_PROVIDER, TARGET_MODEL_INFO, chunk_definition_file,
             ai_chunk_data=parsed_ai_data
         )
-        if not chunk_definitions: 
+        if not chunk_definitions:
             logger.critical("Failed to determine chunk definitions via AI or fallback. Cannot proceed.")
             return
-        last_completed_chunk_index = 0 # Reset progress if chunks were redetermined
+        # Reset progress if chunks were redetermined
+        last_completed_chunk_index = 0
+        successful_preambles = {}
+        successful_bodies = {}
         state["last_completed_chunk_index"] = 0
-        write_state(state)
+        state["successful_preambles"] = {}
+        state["successful_bodies"] = {}
+        # CORRECTED CALL: Pass ref_to_store (string)
+        save_state(last_completed_chunk_index, successful_preambles, successful_bodies, STATE_FILE, TARGET_PROVIDER, original_pdf_upload_ref)
 
     if not chunk_definitions: # Final check
         logger.critical("CRITICAL ERROR: No chunk definitions available. Cannot proceed.")
@@ -2036,452 +2483,343 @@ def main(input_pdf_cli=None, requested_provider=None, requested_model_key=None):
     total_chunks = len(chunk_definitions)
     logger.info(f"Using {total_chunks} chunk definitions.")
 
-    # --- Step 2.5: Extract Bibliography --- 
+    # --- RE-INSERTED: Step 2.5: Extract Bibliography --- 
     bib_file_path = WORKING_DIR / f"{INPUT_PDF_PATH_ACTUAL.stem}.bib"
-    bib_content = None # Initialize here to guarantee scope
-    valid_bib_keys: List[str] = [] # Initialize empty list for keys
+    bib_content = None
+    valid_bib_keys: List[str] = []
 
     if not bib_file_path.exists() or last_completed_chunk_index == 0:
         logger.info(f"--- Extracting Bibliography --- ")
-        bib_content_extracted = extract_bibliography_with_ai(INPUT_PDF_PATH_ACTUAL, TARGET_PROVIDER, TARGET_MODEL_INFO)
+        # ADD await back to call the now async extract_bibliography_with_ai
+        bib_content_extracted = await extract_bibliography_with_ai(INPUT_PDF_PATH_ACTUAL, TARGET_PROVIDER, TARGET_MODEL_INFO)
         if bib_content_extracted:
             try:
-                # Simple validation: does it look like BibTeX?
-                if "@" in bib_content_extracted[:50]: 
+                if "@" in bib_content_extracted[:50]:
                     bib_file_path.write_text(bib_content_extracted, encoding='utf-8')
                     logger.info(f"Bibliography saved to {bib_file_path}")
-                    bib_content = bib_content_extracted # Assign to main variable
-                    valid_bib_keys = extract_bib_keys(bib_content) # Extract keys now
+                    bib_content = bib_content_extracted
                 else:
                      logger.warning("AI response for bibliography did not look like BibTeX. Discarding.")
                      bib_content = None
             except Exception as e:
                 logger.error(f"Failed to write bibliography file {bib_file_path}: {e}")
-                bib_content = None # Ensure None if save fails
+                bib_content = None
         else:
             logger.warning("AI failed to extract bibliography. Citations may not work.")
-            # Clean up potentially empty/invalid file if it exists
             if bib_file_path.exists():
                  try: bib_file_path.unlink()
-                 except OSError: pass 
+                 except OSError: pass
     else:
          logger.info(f"Skipping BibTeX extraction, file already exists: {bib_file_path}")
          try:
-             bib_content = bib_file_path.read_text(encoding='utf-8') # Read into main variable
-             valid_bib_keys = extract_bib_keys(bib_content) # Extract keys now
+             bib_content = bib_file_path.read_text(encoding='utf-8')
          except Exception as e:
              logger.error(f"Failed to read existing bibliography file {bib_file_path}: {e}")
-             bib_content = None # Ensure None on read error
-             valid_bib_keys = [] # Ensure empty list on read error
-    
-    # This check should no longer be needed as valid_bib_keys is set above
-    # if bib_content and not valid_bib_keys:
-    #      valid_bib_keys = extract_bib_keys(bib_content) 
+             bib_content = None
 
-    # Log the status before starting the loop
+    if bib_content:
+        valid_bib_keys = extract_bib_keys(bib_content)
     logger.info(f"Proceeding to chunk processing with {len(valid_bib_keys)} BibTeX keys known.")
 
-    # --- Step 3: Process Chunks --- 
-    start_chunk_index = last_completed_chunk_index
-    successful_preambles = []
-    successful_bodies = []
-    processing_error_occurred = False
+    # --- Step 3: Process Chunks (Async) ---
+    if last_completed_chunk_index >= total_chunks:
+        logger.info("All chunks already processed based on loaded state.")
+    else:
+        logger.info(f"Starting/Resuming chunk processing from chunk {last_completed_chunk_index + 1}...")
 
-    for chunk_index in range(start_chunk_index, total_chunks):
-        chunk_info = chunk_definitions[chunk_index]
-        chunk_num = chunk_info['chunk_num']
-        start_page = chunk_info['start_page']
-        end_page = chunk_info['end_page']
-        start_desc = chunk_info['start_desc']
-        end_desc = chunk_info['end_desc']
-        page_range_str = f"Pages {start_page}-{end_page}"
-        desc_str = f'("{start_desc}" to "{end_desc}")' # Corrected quote escaping
-        logger.info(f"--- Processing Chunk {chunk_num}/{total_chunks} ({page_range_str}) {desc_str} --- ")
+        # Create a semaphore to limit concurrency
+        semaphore = asyncio.Semaphore(5)
 
-        # Create chunk PDF
-        SAVED_CHUNKS_DIR.mkdir(parents=True, exist_ok=True)
-        chunk_pdf_path = create_pdf_chunk_file(INPUT_PDF_PATH_ACTUAL, start_page, end_page, SAVED_CHUNKS_DIR)
-        if not chunk_pdf_path: # Handle failure to create chunk PDF
-            logger.error(f"Failed to create PDF for chunk {chunk_num}. Skipping.")
-            successful_bodies.append(create_chunk_failure_placeholder(chunk_num, start_page, end_page, "Failed to create chunk PDF"))
-            successful_preambles.append(f"% Preamble for failed chunk {chunk_num} omitted")
-            # Update state even if chunk creation fails, so we don't retry indefinitely
-            last_completed_chunk_index = chunk_index + 1 
-            state["last_completed_chunk_index"] = last_completed_chunk_index
-            write_state(state)
-            processing_error_occurred = True # Mark that an error occurred
-            continue
+        # Define the asynchronous function to process a single chunk
+        async def process_chunk_async(
+            chunk_idx: int,
+            chunk_defs: List[Dict[str, Any]],
+            total_chunks_arg: int
+        ) -> Tuple[int, Optional[str], Optional[str]]: # CHANGED: Remove bool return
+            # REMOVED: nonlocal all_chunk_tasks_successful
 
-        chunk_full_latex, chunk_compile_success = None, False
-        extracted_preamble, extracted_body = None, None
-        chunk_tex_path = WORKING_DIR / f"attempt_chunk_{chunk_num}.tex"
-        compile_log = "" # Initialize compile log string
+            # Get chunk details from the main list
+            try:
+                # Use passed chunk_defs
+                chunk_info = chunk_defs[chunk_idx - 1]
+                if chunk_info['chunk_num'] != chunk_idx:
+                    err_msg = f"Mismatch between chunk index {chunk_idx} and definition number {chunk_info['chunk_num']}."
+                    logger.error(err_msg + " Aborting chunk.")
+                    raise ChunkProcessingError(err_msg)
+                start_page = chunk_info['start_page']
+                end_page = chunk_info['end_page']
+                start_desc = chunk_info['start_desc']
+                end_desc = chunk_info['end_desc']
+            except IndexError:
+                err_msg = f"Could not find definition for chunk index {chunk_idx}."
+                logger.error(err_msg + " Aborting chunk.")
+                raise ChunkProcessingError(err_msg)
+            except KeyError as e:
+                 err_msg = f"Missing key {e} in definition for chunk index {chunk_idx}."
+                 logger.error(err_msg + " Aborting chunk.")
+                 raise ChunkProcessingError(err_msg)
 
-        # --- Retry Loop --- 
-        for attempt in range(1, MAX_CHUNK_RETRIES + 1):
-            logger.info(f"Attempt {attempt}/{MAX_CHUNK_RETRIES} for Chunk {chunk_num}...")
-            api_output = None
-            api_success = False
-            api_error_msg = "Attempt Failed"
-
-            # --- Call Provider API (Updated) ---
-            common_args = {
-                "chunk_pdf_path": chunk_pdf_path,
-                "chunk_num": chunk_num,
-                "total_chunks": total_chunks,
-                "start_page": start_page,
-                "end_page": end_page,
-                "start_desc": start_desc,
-                "end_desc": end_desc,
-                "model_info": TARGET_MODEL_INFO,
-                "valid_bib_keys": valid_bib_keys # Pass the extracted keys
-            }
-            if TARGET_PROVIDER == "gemini":
-                api_output, api_success, api_error_msg = get_latex_from_chunk_gemini(
-                    **common_args,
-                    gemini_cache_name=gemini_cache_name # Pass cache name if available
-                )
-            elif TARGET_PROVIDER == "openai":
-                 api_output, api_success, api_error_msg = get_latex_from_chunk_openai(**common_args)
-            elif TARGET_PROVIDER == "claude":
-                 api_output, api_success, api_error_msg = get_latex_from_chunk_claude(**common_args)
-            else:
-                logger.critical(f"Unsupported TARGET_PROVIDER '{TARGET_PROVIDER}' in processing loop.")
-                processing_error_occurred = True
-                break # Break retry loop
-
-            if processing_error_occurred: break # Break chunk loop if provider unsupported
-
-            if not api_success:
-                logger.error(f"API call failed for chunk {chunk_num} (Attempt {attempt}): {api_error_msg}")
-                if attempt < MAX_CHUNK_RETRIES:
-                    logger.info(f"Retrying chunk {chunk_num} API call...")
-                    time.sleep(random.uniform(3, 7) * attempt) # Exponential backoff
-                    continue # Next attempt
-                else:
-                    logger.error(f"Chunk {chunk_num} failed all API attempts.")
-                    chunk_compile_success = False # Ensure marked as failed
-                    break # Exit retry loop for this chunk
-
-            # --- Compile Individual Chunk ---
-            logger.info(f"API successful for chunk {chunk_num}. Compiling individually...")
-            chunk_full_latex = api_output # Store the successful output
+            chunk_pdf_path = None
+            # Use passed total_chunks_arg
+            logger.info(f"--- Starting processing for Chunk {chunk_idx}/{total_chunks_arg} (Pages {start_page}-{end_page}) ---")
 
             try:
-                if isinstance(chunk_full_latex, str):
-                    # Remove potential markdown fences
-                    md_match = re.search(r"```(?:latex)?\s*(.*?)\s*```", chunk_full_latex, re.DOTALL | re.IGNORECASE)
-                    if md_match: 
-                        logger.debug(f"Chunk {chunk_num}: Removed markdown fences from output.")
-                        chunk_full_latex = md_match.group(1).strip()
-                    else: 
-                        chunk_full_latex = chunk_full_latex.strip()
-                    
-                else: 
-                    # Should not happen if API success is True, but safety check
-                    raise TypeError("API reported success but output was not a string.")
-                
-                chunk_tex_path.write_text(chunk_full_latex, encoding='utf-8')
-            except Exception as e:
-                logger.error(f"Error preparing/writing chunk LaTeX file {chunk_tex_path.name}: {e}. Skipping compile attempt.")
-                compile_log = f"Error preparing/writing LaTeX file: {e}"
-                if attempt < MAX_CHUNK_RETRIES: 
-                    logger.info("Retrying chunk due to write error...")
-                    time.sleep(random.uniform(2, 5))
-                    continue # Retry API call
-                else: 
-                    chunk_compile_success = False
-                    break # Exit retry loop
+                # Create chunk PDF
+                chunk_pdf_path = await asyncio.to_thread(
+                    create_pdf_chunk_file,
+                    INPUT_PDF_PATH_ACTUAL,
+                    start_page, end_page,
+                    SAVED_CHUNKS_DIR
+                )
+                if not chunk_pdf_path:
+                    err_msg = f"Chunk {chunk_idx}: Failed to create PDF chunk file. Skipping."
+                    logger.error(err_msg)
+                    raise ChunkProcessingError(err_msg)
+                logger.info(f"Chunk {chunk_idx}: Created chunk PDF: {chunk_pdf_path.name}")
 
-            # Compile (calls pdflatex, possibly bibtex if needed)
-            # Note: Individual chunk compile doesn't use the main .bib file usually
-            compile_ok, compile_log, _ = compile_latex(
-                chunk_tex_path,
-                LATEX_AUX_DIR,
-                main_bib_file_path=bib_file_path # Pass the main bib file path
-            )
+                raw_output = None
+                max_retries = 3
+                base_delay = 2
+                api_success = False
+                api_error_msg = "No response received"
 
-            if compile_ok:
-                logger.info(f"Individual compilation successful for chunk {chunk_num}.")
-                try:
-                    # Read the *successfully compiled* content back for parsing
-                    compiled_tex_content = chunk_tex_path.read_text(encoding='utf-8')
-                    # Corrected regex strings (removed trailing backslash, fixed escaping)
-                    preamble_match = re.match(r"(.*?)(?:\\begin\{document\})", compiled_tex_content, re.DOTALL | re.IGNORECASE)
-                    # SIMPLER Regex for body (make \end{document} non-optional):
-                    body_match = re.search(r"\\begin\{document\}(.*?)\\end\{document\}", compiled_tex_content, re.DOTALL | re.IGNORECASE)
-                    
-                    extracted_preamble = preamble_match.group(1).strip() if preamble_match else None
-                    # Keep the strip() here for this simpler regex
-                    extracted_body = body_match.group(1).strip() if body_match else None
+                # Acquire semaphore before making API call
+                async with semaphore:
+                    for attempt in range(max_retries):
+                        logger.debug(f"Chunk {chunk_idx}: Attempt {attempt + 1}/{max_retries} for API call...")
+                        common_args = {
+                            "chunk_pdf_path": chunk_pdf_path, "chunk_num": chunk_idx,
+                            "total_chunks": total_chunks_arg, "start_page": start_page,
+                            "end_page": end_page, "start_desc": start_desc,
+                            "end_desc": end_desc, "model_info": TARGET_MODEL_INFO,
+                            "valid_bib_keys": valid_bib_keys
+                        }
+                        try:
+                            if TARGET_PROVIDER == "gemini":
+                                # Pass gemini_cache_name if needed by the function
+                                raw_output, api_success, api_error_msg = await get_latex_from_chunk_gemini(
+                                    **common_args #, gemini_cache_name=gemini_cache_name # Uncomment if cache used
+                                )
+                            elif TARGET_PROVIDER == "openai":
+                                raw_output, api_success, api_error_msg = await get_latex_from_chunk_openai(**common_args)
+                            elif TARGET_PROVIDER == "claude": # Ensure this matches the function name
+                                raw_output, api_success, api_error_msg = await get_latex_from_chunk_claude(**common_args)
+                            else:
+                                err_msg = f"Invalid TARGET_PROVIDER '{TARGET_PROVIDER}' during chunk processing."
+                                logger.error(err_msg)
+                                raise ChunkProcessingError(err_msg)
 
-                    # More detailed check
-                    if extracted_preamble and extracted_body: 
-                        logger.debug(f"Extracted preamble ({len(extracted_preamble)} chars) and body ({len(extracted_body)} chars).")
-                        chunk_compile_success = True
-                        break # Success! Exit retry loop for this chunk
-                    else:
-                        error_details = []
-                        if not preamble_match:
-                            error_details.append("Preamble regex did not match.")
-                        elif not extracted_preamble:
-                            error_details.append("Preamble extracted but was empty after stripping.")
-                        
-                        if not body_match:
-                            error_details.append("Body extracted but was empty after stripping." if body_match else "Body regex did not match.") 
-                            
-                        log_msg = f"Parsed empty or missing preamble/body from successfully compiled chunk {chunk_num}. Details: {'. '.join(error_details)}"
-                        logger.error(log_msg)
-                        compile_log += "\nError: " + log_msg
-                        chunk_compile_success = False # Ensure marked as failed
-                        # DO NOT BREAK HERE - let it fall through to save the problematic file if parsing fails
-                except Exception as parse_e: 
-                     log_msg = f"Exception during preamble/body parsing: {parse_e}"
-                     logger.error(f"Error parsing preamble/body: {parse_e}. Treating as failure.", exc_info=True)
-                     compile_log += f"\nError: Exception during preamble/body parsing: {parse_e}"
-                     chunk_compile_success = False # Ensure failure on exception
+                            if api_success:
+                                break # Exit retry loop if successful
+                            else:
+                                logger.warning(f"Chunk {chunk_idx}: API Attempt {attempt + 1}/{max_retries} failed. Reason: {api_error_msg}")
 
-                # If parsing failed, break retry loop (already marked as failure)
-                if not chunk_compile_success:
-                    break 
-                    
-            else: # Compile failed
-                logger.warning(f"Individual compilation failed for chunk {chunk_num} (Attempt {attempt}).")
-                # Save data for this failed attempt (API output + compile log)
-                save_failed_chunk_data(chunk_num, start_page, end_page, chunk_full_latex, compile_log)
-                if attempt < MAX_CHUNK_RETRIES:
-                     logger.info("Retrying chunk API call after compile failure...")
-                     time.sleep(random.uniform(3, 7) * attempt) # Exponential backoff before API retry
-                     continue # Continue to the next attempt in the retry loop (will call API again)
+                        except ChunkProcessingError: # Re-raise specific errors
+                            raise
+                        except Exception as e:
+                            logger.warning(f"Chunk {chunk_idx}: Attempt {attempt + 1}/{max_retries} failed with exception: {e}", exc_info=False) # Less verbose logging for retries
+                            api_error_msg = str(e)
+                            api_success = False # Ensure failure
+
+                        if not api_success and attempt < max_retries - 1:
+                            delay = base_delay * (2 ** attempt)
+                            logger.info(f"Chunk {chunk_idx}: Waiting {delay:.1f}s before retry...")
+                            await asyncio.sleep(delay)
+
+                if not api_success:
+                    err_msg = f"Chunk {chunk_idx}: API calls failed after {max_retries} attempts. Final error: {api_error_msg}"
+                    logger.error(err_msg)
+                    raise ChunkProcessingError(err_msg)
+
+                logger.info(f"Chunk {chunk_idx}: Received successful response from {TARGET_PROVIDER}. Parsing...")
+                extracted_preamble, extracted_body = parse_llm_latex_output(raw_output, chunk_idx, total_chunks_arg)
+
+                if extracted_body:
+                    logger.info(f"Chunk {chunk_idx}: Successfully parsed LaTeX content.")
+                    return chunk_idx, extracted_preamble, extracted_body # CHANGED return
                 else:
-                     logger.error(f"Chunk {chunk_num} failed compilation after all retries.")
-                     chunk_compile_success = False # Ensure marked as failed
-                     break # Exit retry loop, chunk failed all attempts
+                    err_msg = f"Chunk {chunk_idx}: Failed to parse LaTeX content from response (body was null/empty after parsing)."
+                    logger.warning(err_msg)
+                    # REMOVED save_failed_chunk_data call
+                    raise ChunkProcessingError(err_msg)
 
-            # Added check: If compile was OK but parsing failed, save the problematic .tex file
-            if compile_ok and not chunk_compile_success:
-                logger.warning(f"Chunk {chunk_num} compiled but parsing failed. Saving the problematic .tex file.")
-                failed_tex_copy_path = FAILED_CHUNKS_DIR / f"compiled_but_parsed_fail_chunk_{chunk_num}_p{start_page}-p{end_page}.tex"
-                try:
-                    shutil.copy2(chunk_tex_path, failed_tex_copy_path)
-                    logger.info(f"Saved problematic tex file to {failed_tex_copy_path}")
-                except Exception as copy_e:
-                    logger.error(f"Could not copy problematic tex file {chunk_tex_path} to {failed_tex_copy_path}: {copy_e}")
-                # Now break the retry loop as parsing failed
-                break
-            
-        # --- End Retry Loop --- 
-        
-        # If a critical error like unsupported provider occurred, break main loop
-        if processing_error_occurred and not chunk_compile_success: 
-            logger.error("Exiting main processing loop due to critical error.")
-            break 
+            except ChunkProcessingError: # Re-raise to stop processing
+                raise
+            except Exception as e:
+                err_msg = f"Chunk {chunk_idx}: Unexpected error during processing: {e}"
+                logger.exception(err_msg)
+                raise ChunkProcessingError(err_msg) # Raise custom error
+            finally:
+                # ... (finally block remains same) ...
+                # if chunk_pdf_path and chunk_pdf_path.exists():
+                # try:
+                        # await asyncio.to_thread(chunk_pdf_path.unlink)
+                        # logger.debug(f"Chunk {chunk_idx}: Deleted temporary file {chunk_pdf_path.name}")
+                    # except Exception as e_unlink:
+                         # logger.warning(f"Chunk {chunk_idx}: Could not delete temp file {chunk_pdf_path.name}. Error: {e_unlink}")
+                pass
 
-        # Clean up chunk PDF regardless of success/failure for this chunk
-        if chunk_pdf_path and chunk_pdf_path.exists():
-            logger.debug(f"Cleaning up chunk PDF: {chunk_pdf_path.name}")
-            try: chunk_pdf_path.unlink()
-            except OSError as e: logger.warning(f"Could not delete chunk PDF {chunk_pdf_path.name}: {e}")
+        # --- End of process_chunk_async ---
 
-        # Process result for the chunk
-        if chunk_compile_success and extracted_preamble is not None and extracted_body is not None:
-            logger.info(f"Successfully processed Chunk {chunk_num}.")
-            successful_preambles.append(extracted_preamble)
-            successful_bodies.append(extracted_body)
-            last_completed_chunk_index = chunk_index + 1
-            state["last_completed_chunk_index"] = last_completed_chunk_index
-            write_state(state)
+        # Create tasks for chunks that need processing
+        tasks = []
+        indices_to_process = []
+        for i in range(last_completed_chunk_index + 1, total_chunks + 1):
+             if i not in successful_bodies:
+                 indices_to_process.append(i)
+                 # MODIFIED: Pass chunk_definitions and total_chunks to the task
+                 tasks.append(asyncio.create_task(process_chunk_async(i, chunk_definitions, total_chunks)))
+             else:
+                 logger.info(f"Skipping task creation for chunk {i}, already present in loaded state.")
+
+        # Run tasks concurrently and gather results
+        if tasks:
+            logger.info(f"Processing chunks {indices_to_process} concurrently ({len(tasks)} tasks)...")
+            try:
+                results = await asyncio.gather(*tasks)
+            except ChunkProcessingError as e_gather:
+                 logger.critical(f"CRITICAL: Chunk processing failed: {e_gather}. Aborting further processing.")
+                 # Clean up full PDF upload before exiting if possible
+                 if original_pdf_upload_ref and state.get("provider"):
+                     logger.info("Attempting cleanup of uploaded PDF before exiting due to chunk error...")
+                     ref_to_del = state.get("original_pdf_upload_ref")
+                     delete_provider_file(ref_to_del, state["provider"])
+                 return # Exit main
+
+            # Process results - updates IN-MEMORY dictionaries (only if gather succeeded)
+            for chunk_num, preamble, body in results:
+                # No need to check success flag, gather would have raised exception
+                successful_preambles[chunk_num] = preamble
+                successful_bodies[chunk_num] = body
+                if chunk_num > last_completed_chunk_index:
+                     last_completed_chunk_index = chunk_num
+                # REMOVED placeholder logic
+
+            # Save state AFTER processing ALL results from the gather call
+            save_state(last_completed_chunk_index,
+                       successful_preambles,
+                       successful_bodies,
+                       STATE_FILE,
+                       TARGET_PROVIDER,
+                       state.get("original_pdf_upload_ref"))
+            logger.info(f"State saved after processing batch. Last completed chunk: {last_completed_chunk_index}")
         else:
-             # Log final failure for the chunk and add placeholder
-             logger.error(f"Failed to process chunk {chunk_num} after all retries. Adding placeholder.")
-             placeholder_reason = f"Chunk failed API/compilation after {MAX_CHUNK_RETRIES} attempts."
-             placeholder_body = create_chunk_failure_placeholder(chunk_num, start_page, end_page, placeholder_reason)
-             successful_bodies.append(placeholder_body)
-             successful_preambles.append(f"% Preamble for failed chunk {chunk_num} omitted")
-             # Ensure state is updated even on failure to avoid infinite loop
-             last_completed_chunk_index = chunk_index + 1 
-             state["last_completed_chunk_index"] = last_completed_chunk_index
-             write_state(state)
-             processing_error_occurred = True # Mark that at least one chunk failed
-             # Save the *last* failed attempt's data if not already saved during compile fail
-             if chunk_full_latex: # Only save if we got some output from API
-                 save_failed_chunk_data(chunk_num, start_page, end_page, chunk_full_latex, compile_log) 
+            logger.info("No new chunk tasks were created (already processed or loaded from state).")
 
-        # Clean up the last attempt .tex file for this chunk
-        if chunk_tex_path.exists():
-            try: chunk_tex_path.unlink()
-            except OSError: logger.warning(f"Could not delete attempt file {chunk_tex_path.name}")
-    
-    # --- End Chunk Processing Loop ---
+    # --- Post Chunk Processing Checks ---
 
-    # --- Step 4: Final Preamble Synthesis --- 
+    # --- Final LaTeX Assembly ---
+    # (Preamble synthesis logic remains synchronous for now)
     final_preamble = None
-    # Only attempt synthesis if all chunks were processed (even if some failed and have placeholders)
-    if last_completed_chunk_index == total_chunks:
-        logger.info("All chunks processed (or placeholders added). Attempting final preamble synthesis...")
-        
-        # Filter out placeholder preambles before synthesis
-        valid_preambles_for_synthesis = [p for p in successful_preambles if not p.startswith("% Preamble for failed chunk")]
-        
+    if last_completed_chunk_index == total_chunks: # Only synth if all chunks attempted
+        logger.info("All chunks processed. Attempting final preamble synthesis...")
+        valid_preambles_for_synthesis = [p for p in successful_preambles.values() if p and not p.strip().startswith("% Preamble for")] # Filter None/empty too
+
         if not valid_preambles_for_synthesis:
-             logger.warning("No successful preambles extracted from any chunk. Using basic fallback preamble.")
-             final_preamble = fallback_preamble # Use the full fallback defined at the start
+             logger.warning("No successful preambles extracted. Using basic fallback preamble.")
+             final_preamble = fallback_preamble
         else:
             logger.info(f"Attempting to synthesize final preamble using AI from {len(valid_preambles_for_synthesis)} successful chunks...")
+            # Assuming generate_final_preamble_with_ai is sync for now
             final_preamble = generate_final_preamble_with_ai(
-                valid_preambles_for_synthesis, # Use only valid preambles
-                TARGET_PROVIDER,
-                TARGET_MODEL_INFO,
+                valid_preambles_for_synthesis,
+                TARGET_PROVIDER, TARGET_MODEL_INFO,
                 INPUT_PDF_PATH_ACTUAL if TARGET_PROVIDER == "gemini" else None
-                )
-
+            )
             if not final_preamble:
-                 logger.warning("AI preamble synthesis failed or returned invalid result. Using fallback concatenation (may be messy).")
+                 logger.warning("AI preamble synthesis failed. Using fallback concatenation.")
+                 # Fallback concatenation logic...
                  all_preamble_lines = set()
                  doc_class_line = ""
-                 # Try to find a documentclass line first
                  for p in valid_preambles_for_synthesis:
                      for line in p.splitlines():
                           stripped_line = line.strip()
                           if stripped_line.startswith("\\documentclass"):
                               if not doc_class_line: doc_class_line = stripped_line
-                              # Optional: Check for conflicting document classes
-                          elif stripped_line: # Add non-empty, non-documentclass lines
-                              all_preamble_lines.add(stripped_line)
-                 
-                 # Assemble fallback preamble
-                 if not doc_class_line:
-                      logger.warning("No \\documentclass found in any extracted preamble. Using default from fallback.")
-                      doc_class_line = fallback_preamble.splitlines()[0] # Get from global fallback
-                 
-                 # Combine unique lines, keeping documentclass first
+                          elif stripped_line: all_preamble_lines.add(stripped_line)
+                 if not doc_class_line: doc_class_line = fallback_preamble.splitlines()[0]
                  other_lines = sorted(list(all_preamble_lines))
                  final_preamble = doc_class_line + "\n" + "\n".join(other_lines)
-                 final_preamble = "% Preamble created using fallback concatenation (AI synthesis failed)\n" + final_preamble
+                 final_preamble = "% Preamble created using fallback concatenation\n" + final_preamble
             else:
                  logger.info("AI successfully synthesized the final preamble.")
-                 # Add comment indicating AI synthesis
-                 final_preamble = f"% Preamble synthesized by AI ({TARGET_PROVIDER} {TARGET_MODEL_INFO.get('nickname', '')})\n" + final_preamble.strip()
+                 final_preamble = final_preamble.strip()
 
-
-    # --- Step 5: Final Document Assembly --- 
-    # Assemble only if preamble synthesis was attempted (i.e., all chunks processed)
-    if final_preamble: 
+    # --- Step 5: Final Document Assembly ---
+    if final_preamble:
         logger.info("Concatenating final document...")
-
-        # Check if a bib file exists to add bibliography commands
         bib_commands = ""
         if bib_file_path.exists():
             bib_stem = bib_file_path.stem
-            # Choose a common bibliography style (could be refined)
-            bib_style = "amsplain" 
+            bib_style = "amsplain"
             bib_commands = f"\n\\bibliographystyle{{{bib_style}}}\n\\bibliography{{{bib_stem}}}\n"
             logger.info(f"Adding bibliography commands for {bib_stem}.bib with style {bib_style}")
         else:
-            logger.info("No .bib file found or extracted, skipping bibliography commands.")
+            logger.info("No .bib file found, skipping bibliography commands.")
 
-        # Combine preamble, bodies (including placeholders), and bib commands
-        final_combined_latex = (
-            final_preamble.strip() + "\n\n" + # Ensure preamble ends cleanly
-            "\\begin{document}\n\n" +
-            "\n\n% ========================================\n\n".join(successful_bodies) + # Join bodies/placeholders
-            bib_commands + # Add bib commands (empty string if no bib file)
-            "\n\n\\end{document}" # Use double backslash for literal LaTeX command
+        # Ensure bodies are joined in the correct order
+        final_body_content = "\n\n% ========================================\n\n".join(
+            successful_bodies[i] for i in range(1, total_chunks + 1)
         )
-        
-        # Define final output paths
-        # MOVED EARLIER
+
+        final_combined_latex = (
+            final_preamble.strip() + "\n\n" +
+            "\\begin{document}\n\n" +
+            final_body_content + # Use ordered bodies
+            bib_commands +
+            "\n\n\\end{document}" # Use double backslash
+        )
 
         try:
             FINAL_TEX_FILE.write_text(final_combined_latex, encoding='utf-8')
             logger.info(f"Final concatenated LaTeX saved to {FINAL_TEX_FILE}")
-            
-            logger.info("Compiling the final document...")
-            # Compile the final document (timeout increased)
-            final_compile_ok, final_compile_log, final_pdf_path_from_compile = compile_latex(
-                FINAL_TEX_FILE, 
-                LATEX_AUX_DIR, 
-                main_bib_file_path=bib_file_path, # Pass the main bib file path
-                num_runs=3, # More runs often needed for final biblio/refs
-                timeout=180 
-            ) 
-            
-            if final_compile_ok and final_pdf_path_from_compile and final_pdf_path_from_compile.exists():
-                 # Copy the compiled PDF from aux dir to the main working dir
-                 shutil.copy2(final_pdf_path_from_compile, FINAL_PDF_FILE)
-                 logger.info(f"Final PDF successfully compiled and saved to {FINAL_PDF_FILE}")
-                 # Mark overall success ONLY if final compilation worked
-                 # processing_error_occurred might be True if chunks failed, but final compile succeeded
-                 # overall_success depends on final PDF existing.
-            else: 
-                 logger.error(f"Failed to compile the final concatenated document: {FINAL_TEX_FILE.name}")
-                 # Don't set processing_error_occurred here, as chunk processing might have finished
-                 # Final summary will indicate based on PDF existence
 
-        except Exception as e: 
-             logger.error(f"Error writing or compiling final LaTeX file {FINAL_TEX_FILE.name}: {e}", exc_info=True)
-             # Mark error if writing/compiling final doc fails catastrophically
-             processing_error_occurred = True 
+        except Exception as e:
+             logger.error(f"Error writing final LaTeX file {FINAL_TEX_FILE.name}: {e}", exc_info=True)
+             all_chunk_tasks_successful = False # Mark as overall failure
+    else:
+        # This case happens if preamble synth wasn't attempted (e.g., chunks didn't finish)
+        logger.error("Final document assembly skipped because preamble synthesis did not run (likely due to incomplete chunk processing).")
+        # REMOVED: all_chunk_tasks_successful = False # Mark as overall failure
 
     # --- Final Summary --- 
     end_time_main = time.time()
     total_time_main = end_time_main - start_time_main
     logger.info("="*60)
-    
-    # Determine overall success based *only* on final PDF existing after attempting assembly
-    overall_success = FINAL_PDF_FILE.exists() and FINAL_PDF_FILE.stat().st_size > 100
 
-    if overall_success:
-        logger.info(f"--- PDF Translation Completed Successfully ---")
-        logger.info(f"Final PDF: {FINAL_PDF_FILE.resolve()}")
-        if processing_error_occurred: # Note if chunks failed but final PDF was generated
-             logger.warning("Note: Some chunks failed processing and placeholders were used.")
-    elif last_completed_chunk_index != total_chunks:
-         logger.error(f"--- PDF Translation Failed Critically ---")
-         logger.error("Processing stopped before all chunks were attempted.")
-         logger.error(f"Last completed chunk index: {last_completed_chunk_index}/{total_chunks}")
-    elif not final_preamble:
-         logger.error(f"--- PDF Translation Failed ---")
-         logger.error("All chunks processed, but final preamble synthesis failed and final document could not be assembled.")
-    else: # Chunks finished, assembly attempted, but final PDF missing/empty
-        logger.error(f"--- PDF Translation Finished, but Final Compilation Failed ---")
-        logger.error(f"All chunks processed ({last_completed_chunk_index}/{total_chunks}), but the final document failed to compile.")
-        logger.error(f"Check the final concatenated file: {FINAL_TEX_FILE.resolve()}")
-        logger.error(f"Check the final compilation log in: {LATEX_AUX_DIR}")
+    # Check for PDF existence now
+    final_pdf_exists = FINAL_PDF_FILE.exists() and FINAL_PDF_FILE.stat().st_size > 100
 
-    # Estimate token usage (very rough)
-    # Need a better way to track actual tokens used per call
-    total_tokens_estimate = 0 # Placeholder
-    logger.info(f"Estimated total token usage (very approximate): ~{total_tokens_estimate}") 
+    if final_pdf_exists:
+        logger.info(f"--- PDF to LaTeX Conversion Script Finished Successfully --- ")
+        logger.info(f"Final PDF generated: {FINAL_PDF_FILE.resolve()}")
+        # REMOVED placeholder warning
+    else:
+        logger.error(f"--- PDF to LaTeX Script Finished With Errors --- ")
+        if FINAL_TEX_FILE.exists():
+            logger.error(f"Final LaTeX file generated: {FINAL_TEX_FILE.resolve()}")
+            logger.error("However, the final PDF compilation failed or was skipped.")
+        else:
+            logger.error("The final .tex file was not generated.")
+        # REMOVED check for incomplete processing, as script should error out earlier
+
     logger.info(f"Total script execution time: {total_time_main:.2f} seconds ({total_time_main/60:.2f} minutes).")
     logger.info(f"Logs and intermediate files are in: {WORKING_DIR.resolve()}")
     logger.info(f"Prompt/Response Log: {PROMPT_LOG_FILE.resolve()}")
     logger.info("="*60)
 
     # --- Cleanup ---
-    # Clean up Gemini Cache (If logic was implemented and cache created)
-    # if TARGET_PROVIDER == "gemini" and gemini_cache:
-    #      logger.info(f"Gemini: Cleaning up cache: {gemini_cache.name}")
-    #      try: genai.delete_cached_content(name=gemini_cache.name); logger.info("Gemini: Cache deleted successfully.")
-    #      except Exception as e: logger.warning(f"Gemini: Failed to delete cache {gemini_cache.name}: {e}")
- 
-    # Clean up the original full PDF upload (Gemini/OpenAI) if it's stored in state
+    # Clean up the original full PDF upload using state info
     provider_in_state = state.get("provider")
-    file_ref_in_state = state.get("original_pdf_upload_ref")
+    file_ref_in_state = state.get("original_pdf_upload_ref") # This should be the string name/ID
     if provider_in_state in ["gemini", "openai"] and file_ref_in_state:
         logger.info(f"Cleaning up uploaded file reference ({provider_in_state}: {file_ref_in_state})...")
-        file_ref_to_delete = file_ref_in_state # Use the ID/Name string directly for OpenAI/Gemini delete
-        if provider_in_state == "gemini":
-             # For Gemini, we need the File object potentially, but delete uses name string
-             # If original_pdf_upload_ref holds the File object, get its name
-             if isinstance(original_pdf_upload_ref, glm.File): file_ref_to_delete = original_pdf_upload_ref.name
-             else: file_ref_to_delete = file_ref_in_state # Assume it's the name string already
-        
-        if file_ref_to_delete: # Ensure we have something to delete
-             delete_provider_file(file_ref_to_delete, provider_in_state) # Pass the provider from state
+        # Call sync delete_provider_file directly (no await needed from async main)
+        delete_provider_file(file_ref_in_state, provider_in_state)
 
-# --- Command-Line Interface --- 
+# --- Command-Line Interface ---
 if __name__ == "__main__":
+    # ... (Argument parsing remains the same) ...
     parser = argparse.ArgumentParser(
         description='Translate a PDF document to LaTeX using AI (Gemini, OpenAI, or Claude), processing in chunks.',
         formatter_class=argparse.RawTextHelpFormatter
@@ -2515,12 +2853,11 @@ if __name__ == "__main__":
     WORKING_DIR = Path(args.working_dir)
 
     # --- Re-init paths and logging based on potentially changed WORKING_DIR ---
-    STATE_FILE = WORKING_DIR / "state.json"
-    FINAL_TEX_FILE = WORKING_DIR / "final_document.tex"
-    FINAL_PDF_FILE = WORKING_DIR / "final_document.pdf"
+    STATE_FILE = WORKING_DIR / "state.json" # Define before use in main
+    # FINAL_TEX_FILE/FINAL_PDF_FILE are now set inside main based on input PDF stem
     LATEX_AUX_DIR = WORKING_DIR / "latex_aux"
-    FAILED_CHUNKS_DIR = WORKING_DIR / "failed_chunks"
     PROMPT_LOG_FILE = WORKING_DIR / "prompts_and_responses.log"
+    SAVED_CHUNKS_DIR = WORKING_DIR / "saved_pdf_chunks" # Ensure this is defined globally
     log_file_path = WORKING_DIR / "processing.log"
 
     if args.clean:
@@ -2540,7 +2877,6 @@ if __name__ == "__main__":
     # (Re)create directories
     WORKING_DIR.mkdir(parents=True, exist_ok=True)
     LATEX_AUX_DIR.mkdir(parents=True, exist_ok=True)
-    FAILED_CHUNKS_DIR.mkdir(parents=True, exist_ok=True)
 
     # Add File Handler to logger
     for handler in logger.handlers[:]:
@@ -2551,4 +2887,6 @@ if __name__ == "__main__":
     logger.info(f"Logging to console and file: {log_file_path.resolve()}")
 
     # Call main function
-    main(input_pdf_cli=args.input_pdf, requested_provider=args.provider, requested_model_key=args.model)
+    # MODIFIED: Use asyncio.run to execute the async main function
+    asyncio.run(main(input_pdf_cli=args.input_pdf, requested_provider=args.provider, requested_model_key=args.model))
+
